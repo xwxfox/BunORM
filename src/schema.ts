@@ -1,0 +1,284 @@
+/**
+ * bunorm/src/schema.ts
+ * Runtime schema introspection — walks TObject properties and produces
+ * the SQL column/table DDL as well as the flatten/hydrate mappings.
+ * Uses typebox 1.x guard functions (IsObject, IsArray, etc.)
+ */
+
+import {
+  IsObject,
+  IsArray,
+  IsString,
+  IsNumber,
+  IsInteger,
+  IsBoolean,
+  IsLiteral,
+  IsOptional,
+  type TObject,
+  type TSchema,
+  type TProperties,
+} from "typebox";
+
+// ─── Column metadata ──────────────────────────────────────────────────────────
+
+export type SqliteType = "TEXT" | "INTEGER" | "REAL" | "BLOB";
+
+export interface ColumnMeta {
+  name: string;
+  sqlType: SqliteType;
+  nullable: boolean;
+  /** True if this is actually an `Optional` wrapper */
+  optional: boolean;
+}
+
+export interface SubTableMeta {
+  /** e.g. "lineItems" */
+  fieldName: string;
+  /** e.g. "sales__lineItems" */
+  tableName: string;
+  /** Schema of a single item in the array */
+  itemSchema: TObject;
+  /** Columns of the sub-table row (owner PK is prepended automatically) */
+  columns: ColumnMeta[];
+}
+
+export interface TableMeta {
+  tableName: string;
+  columns: ColumnMeta[];
+  subTables: SubTableMeta[];
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function unwrapOptional(schema: TSchema): { schema: TSchema; optional: boolean } {
+  // In typebox 1.x optional is a brand on the schema itself
+  if (IsOptional(schema)) {
+    // Optional wraps the inner schema — we treat the inner schema for type mapping
+    // The '~optional' brand is on the schema, not a wrapper object
+    return { schema, optional: true };
+  }
+  return { schema, optional: false };
+}
+
+function schemaToSqlType(schema: TSchema): SqliteType {
+  if (IsInteger(schema)) return "INTEGER";
+  if (IsNumber(schema)) return "REAL";
+  if (IsBoolean(schema)) return "INTEGER"; // SQLite has no bool; 0/1
+  if (IsString(schema)) return "TEXT";
+  if (IsLiteral(schema)) {
+    const v = (schema as { const: unknown }).const;
+    if (typeof v === "number") return typeof v === "number" && Number.isInteger(v) ? "INTEGER" : "REAL";
+    if (typeof v === "boolean") return "INTEGER";
+    return "TEXT";
+  }
+  // Fallback — JSON-encode anything complex that slips through
+  return "TEXT";
+}
+
+function buildColumns(properties: TProperties): ColumnMeta[] {
+  const cols: ColumnMeta[] = [];
+  for (const [name, raw] of Object.entries(properties)) {
+    if (IsArray(raw)) continue; // handled as sub-table
+    if (IsObject(raw)) continue; // nested objects are JSON-encoded as TEXT
+    const { schema, optional } = unwrapOptional(raw);
+    cols.push({
+      name,
+      sqlType: IsObject(schema) ? "TEXT" : schemaToSqlType(schema),
+      nullable: optional,
+      optional,
+    });
+  }
+  // Also handle nested plain objects encoded as JSON TEXT
+  for (const [name, raw] of Object.entries(properties)) {
+    if (!IsArray(raw) && IsObject(raw)) {
+      cols.push({ name, sqlType: "TEXT", nullable: false, optional: false });
+    }
+  }
+  return cols;
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+export function introspectTable(
+  tableName: string,
+  schema: TObject
+): TableMeta {
+  const columns: ColumnMeta[] = [];
+  const subTables: SubTableMeta[] = [];
+
+  for (const [fieldName, raw] of Object.entries(schema.properties)) {
+    if (IsArray(raw) && IsObject(raw.items)) {
+      // Sub-table
+      const itemSchema = raw.items as TObject;
+      const subTableName = `${tableName}__${fieldName}`;
+      subTables.push({
+        fieldName,
+        tableName: subTableName,
+        itemSchema,
+        columns: buildColumns(itemSchema.properties),
+      });
+    } else if (IsObject(raw)) {
+      // Nested plain object → JSON-encoded TEXT column
+      columns.push({ name: fieldName, sqlType: "TEXT", nullable: false, optional: false });
+    } else if (!IsArray(raw)) {
+      const { schema: inner, optional } = unwrapOptional(raw);
+      columns.push({
+        name: fieldName,
+        sqlType: schemaToSqlType(inner),
+        nullable: optional,
+        optional,
+      });
+    }
+  }
+
+  return { tableName, columns, subTables };
+}
+
+// ─── DDL generation ───────────────────────────────────────────────────────────
+
+export function buildCreateTableSQL(
+  meta: TableMeta,
+  primaryKey: string
+): string[] {
+  const stmts: string[] = [];
+
+  // Main table
+  const colDefs = meta.columns.map((c) => {
+    const notNull = !c.nullable ? " NOT NULL" : "";
+    const pk = c.name === primaryKey ? " PRIMARY KEY" : "";
+    return `  "${c.name}" ${c.sqlType}${pk}${notNull}`;
+  });
+  stmts.push(
+    `CREATE TABLE IF NOT EXISTS "${meta.tableName}" (\n${colDefs.join(",\n")}\n)`
+  );
+
+  // Sub-tables — each gets an auto _rowid_ and a FK back to owner
+  for (const sub of meta.subTables) {
+    const subCols = [
+      `  "_id" INTEGER PRIMARY KEY AUTOINCREMENT`,
+      `  "_owner_id" ${meta.columns.find((c) => c.name === primaryKey)?.sqlType ?? "TEXT"} NOT NULL`,
+      `  "_index" INTEGER NOT NULL`,
+      ...sub.columns.map((c) => {
+        const notNull = !c.nullable ? " NOT NULL" : "";
+        return `  "${c.name}" ${c.sqlType}${notNull}`;
+      }),
+    ];
+    stmts.push(
+      `CREATE TABLE IF NOT EXISTS "${sub.tableName}" (\n${subCols.join(",\n")}\n)`
+    );
+    // Index on owner FK for fast hydration
+    stmts.push(
+      `CREATE INDEX IF NOT EXISTS "idx_${sub.tableName}__owner" ON "${sub.tableName}" ("_owner_id")`
+    );
+  }
+
+  return stmts;
+}
+
+export function buildIndexSQL(
+  tableName: string,
+  columns: string[],
+  unique: boolean,
+  name?: string
+): string {
+  const idxName = name ?? `idx_${tableName}__${columns.join("_")}`;
+  const uniq = unique ? "UNIQUE " : "";
+  const cols = columns.map((c) => `"${c}"`).join(", ");
+  return `CREATE ${uniq}INDEX IF NOT EXISTS "${idxName}" ON "${tableName}" (${cols})`;
+}
+
+// ─── Flatten / hydrate ────────────────────────────────────────────────────────
+
+/**
+ * Flatten a full user object into the main-table row object.
+ * Arrays are stripped; nested objects are JSON-stringified.
+ */
+export function flattenRow(
+  obj: Record<string, unknown>,
+  meta: TableMeta
+): Record<string, SqliteScalar> {
+  const row: Record<string, SqliteScalar> = {};
+  for (const col of meta.columns) {
+    const v = obj[col.name];
+    if (v === undefined || v === null) {
+      row[col.name] = null;
+    } else if (col.sqlType === "TEXT" && typeof v === "object") {
+      row[col.name] = JSON.stringify(v);
+    } else if (col.sqlType === "INTEGER" && typeof v === "boolean") {
+      row[col.name] = v ? 1 : 0;
+    } else {
+      row[col.name] = v as SqliteScalar;
+    }
+  }
+  return row;
+}
+
+/**
+ * Flatten sub-table items for a given field, attaching owner PK.
+ */
+export function flattenSubRows(
+  ownerPk: SqliteScalar,
+  items: unknown[],
+  sub: SubTableMeta
+): Array<Record<string, SqliteScalar>> {
+  return items.map((item, idx) => {
+    const obj = item as Record<string, unknown>;
+    const row: Record<string, SqliteScalar> = {
+      _owner_id: ownerPk,
+      _index: idx,
+    };
+    for (const col of sub.columns) {
+      const v = obj[col.name];
+      if (v === undefined || v === null) {
+        row[col.name] = null;
+      } else if (col.sqlType === "TEXT" && typeof v === "object") {
+        row[col.name] = JSON.stringify(v);
+      } else if (col.sqlType === "INTEGER" && typeof v === "boolean") {
+        row[col.name] = v ? 1 : 0;
+      } else {
+        row[col.name] = v as SqliteScalar;
+      }
+    }
+    return row;
+  });
+}
+
+type SqliteScalar = string | number | boolean | null | bigint;
+
+/**
+ * Rehydrate a flat DB row back into the full object shape.
+ * Sub-table arrays must be provided separately and are spliced in.
+ */
+export function hydrateRow(
+  flat: Record<string, unknown>,
+  meta: TableMeta,
+  subRows: Map<string, Record<string, unknown>[]>
+): Record<string, unknown> {
+  const obj: Record<string, unknown> = {};
+
+  for (const col of meta.columns) {
+    const v = flat[col.name];
+    if (col.sqlType === "TEXT" && typeof v === "string") {
+      // Try JSON parse for objects that were stringified
+      try {
+        const parsed = JSON.parse(v);
+        // Only use parsed result if it's an object/array (not a plain string value)
+        obj[col.name] = typeof parsed === "object" ? parsed : v;
+      } catch {
+        obj[col.name] = v;
+      }
+    } else if (col.sqlType === "INTEGER" && typeof v === "number") {
+      // Detect boolean columns by checking if schema says boolean — fallback: keep as number
+      // We'll leave this as-is; codec layer can handle it if needed
+      obj[col.name] = v;
+    } else {
+      obj[col.name] = v ?? null;
+    }
+  }
+
+  for (const sub of meta.subTables) {
+    obj[sub.fieldName] = subRows.get(sub.tableName) ?? [];
+  }
+
+  return obj;
+}
