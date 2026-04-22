@@ -6,7 +6,7 @@
   "types": "lib/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "prepare": "npm run build"
+    "2prepare": "npm run build"
   },
   "keywords": [
     "orm",
@@ -41,7 +41,10 @@
     "lib/**/*"
   ],
   "devDependencies": {
-    "bun-types": "^0.5.7",
-    "typescript": "^5.0.2"
+    "@types/bun": "latest",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "typebox": "^1.1.30"
   }
 }

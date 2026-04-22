@@ -2,3 +2,6 @@ node_modules
 BunORM*.tgz
 yarn-error.log
 *.sqlite
+*.db
+*.db-wal
+*.db-shm

@@ -17,6 +17,7 @@ import type {
   PageResult,
   WhereClause,
   TableConfig,
+  Entity,
 } from "./types.ts";
 import type { BunDatabase, SQLQueryBindings } from "./database.ts";
 import {
@@ -41,7 +42,8 @@ import {
 
 export class Repository<
   T extends TObject,
-  PK extends ScalarKeys<T>
+  PK extends ScalarKeys<T>,
+  Mat = never
 > {
   readonly tableName: string;
   readonly meta: TableMeta;
@@ -51,6 +53,17 @@ export class Repository<
 
   private readonly db: BunDatabase;
   private readonly descriptor: TableConfig<T, PK>;
+
+  /** Shared prototype for entity objects */
+  private _entityProto: object | null = null;
+
+  /** Materializer closures injected after two-pass init */
+  private _materialize?: (
+    record: Record<string, unknown>
+  ) => Record<string, unknown>;
+  private _materializeMany?: (
+    records: Record<string, unknown>[]
+  ) => Record<string, unknown>[];
 
   constructor(
     tableName: string,
@@ -69,10 +82,39 @@ export class Repository<
     this._migrate();
   }
 
+  /** Inject materializers after ORM two-pass init */
+  setMaterializer(
+    single: (record: Record<string, unknown>) => Record<string, unknown>,
+    many: (records: Record<string, unknown>[]) => Record<string, unknown>[]
+  ): void {
+    this._materialize = single;
+    this._materializeMany = many;
+
+    // Build shared entity prototype
+    const proto = Object.create(null);
+    Object.defineProperty(proto, "materialize", {
+      value: function () {
+        return single(this);
+      },
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+    this._entityProto = proto;
+  }
+
+  /** Wrap raw data in an entity object */
+  private _wrap(data: Record<string, unknown>): Record<string, unknown> {
+    if (!this._entityProto) return data;
+    const entity = Object.create(this._entityProto);
+    Object.assign(entity, data);
+    return entity;
+  }
+
   // ─── Migration ─────────────────────────────────────────────────────────────
 
   private _migrate(): void {
-    const pk = this.descriptor.primaryKey as string;
+    const pk = this.descriptor.primaryKey.name;
     const stmts = buildCreateTableSQL(this.meta, pk);
     this.db.transaction(() => {
       for (const sql of stmts) this.db.exec(sql);
@@ -81,7 +123,7 @@ export class Repository<
         this.db.exec(
           buildIndexSQL(
             this.tableName,
-            idx.columns as string[],
+            idx.columns.map((c) => c.name),
             idx.unique ?? false,
             idx.name
           )
@@ -105,7 +147,7 @@ export class Repository<
 
   // ─── Insert ────────────────────────────────────────────────────────────────
 
-  insert(data: InsertData<T>): Infer<T> {
+  insert(data: InsertData<T>): Entity<Infer<T>, Mat> {
     const parsed = this.parse(data);
     const obj = parsed as Record<string, unknown>;
 
@@ -115,7 +157,7 @@ export class Repository<
       const { sql, params } = buildInsert(this.tableName, flat);
       this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
 
-      const pkVal = obj[this.descriptor.primaryKey as string];
+      const pkVal = obj[this.descriptor.primaryKey.name];
 
       // Sub-table rows
       for (const sub of this.meta.subTables) {
@@ -129,23 +171,23 @@ export class Repository<
       }
     });
 
-    return parsed;
+    return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat>;
   }
 
   /** Insert many records in a single transaction */
-  insertMany(records: InsertData<T>[]): Infer<T>[] {
+  insertMany(records: InsertData<T>[]): Entity<Infer<T>, Mat>[] {
     const parsed = records.map((r) => this.parse(r));
     this.db.transaction(() => {
       for (const p of parsed) this._insertParsed(p as Record<string, unknown>);
     });
-    return parsed;
+    return parsed.map((p) => this._wrap(p as Record<string, unknown>) as Entity<Infer<T>, Mat>);
   }
 
   private _insertParsed(obj: Record<string, unknown>): void {
     const flat = flattenRow(obj, this.meta);
     const { sql, params } = buildInsert(this.tableName, flat);
     this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
-    const pkVal = obj[this.descriptor.primaryKey as string];
+    const pkVal = obj[this.descriptor.primaryKey.name];
     for (const sub of this.meta.subTables) {
       const items = obj[sub.fieldName];
       if (!globalThis.Array.isArray(items) || items.length === 0) continue;
@@ -159,7 +201,7 @@ export class Repository<
 
   // ─── Upsert ────────────────────────────────────────────────────────────────
 
-  upsert(opts: UpsertOptions<T, PK>): Infer<T> {
+  upsert(opts: UpsertOptions<T, PK>): Entity<Infer<T>, Mat> {
     const parsed = this.parse(opts.data);
     const obj = parsed as Record<string, unknown>;
     const flat = flattenRow(obj, this.meta);
@@ -184,7 +226,7 @@ export class Repository<
       );
       this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
 
-      const pkVal = obj[this.descriptor.primaryKey as string];
+      const pkVal = obj[this.descriptor.primaryKey.name];
 
       // Re-sync sub-tables: delete old rows, re-insert
       for (const sub of this.meta.subTables) {
@@ -202,13 +244,13 @@ export class Repository<
       }
     });
 
-    return parsed;
+    return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat>;
   }
 
   // ─── Find by PK ────────────────────────────────────────────────────────────
 
-  findById(id: Infer<T>[PK]): Infer<T> | null {
-    const pk = this.descriptor.primaryKey as string;
+  findById(id: Infer<T>[PK]): Entity<Infer<T>, Mat> | null {
+    const pk = this.descriptor.primaryKey.name;
     const stmt = this.db.prepare(
       `SELECT * FROM "${this.tableName}" WHERE "${pk}" = ? LIMIT 1`
     );
@@ -216,20 +258,20 @@ export class Repository<
       | Record<string, unknown>
       | undefined;
     if (!row) return null;
-    return this._hydrateOne(row) as Infer<T>;
+    return this._wrap(this._hydrateOne(row)) as Entity<Infer<T>, Mat>;
   }
 
   // ─── Find many ─────────────────────────────────────────────────────────────
 
-  findMany(opts: FindOptions<T> = {}): Infer<T>[] {
+  findMany(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat>[] {
     const { sql, params } = buildSelect(this.tableName, opts);
     const stmt = this.db.prepare(sql);
     const rows = stmt.all(...(params as SQLQueryBindings[])) as Record<string, unknown>[];
-    return rows.map((r) => this._hydrateOne(r, opts.include) as Infer<T>);
+    return rows.map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat>);
   }
 
   /** findMany with total count — useful for pagination UIs */
-  findPage(opts: FindOptions<T> = {}): PageResult<Infer<T>> {
+  findPage(opts: FindOptions<T> = {}): PageResult<Entity<Infer<T>, Mat>> {
     const { sql, params, countSql, countParams } = buildSelect(
       this.tableName,
       opts
@@ -237,7 +279,7 @@ export class Repository<
 
     const rows = (
       this.db.prepare(sql).all(...(params as SQLQueryBindings[])) as Record<string, unknown>[]
-    ).map((r) => this._hydrateOne(r, opts.include) as Infer<T>);
+    ).map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat>);
 
     const countRow = this.db.prepare(countSql).get(...(countParams as SQLQueryBindings[])) as {
       _count: number;
@@ -251,9 +293,27 @@ export class Repository<
     };
   }
 
-  findOne(opts: FindOptions<T> = {}): Infer<T> | null {
+  findOne(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat> | null {
     const rows = this.findMany({ ...opts, limit: 1 });
     return rows[0] ?? null;
+  }
+
+  /** Batch materialized find — N+1 safe */
+  findManyMaterialized(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat>[] {
+    const rows = this.findMany(opts);
+    if (!this._materializeMany) return rows;
+    const materialized = this._materializeMany(
+      rows as Record<string, unknown>[]
+    );
+    // Re-attach entity prototype in case materializeMany created copies
+    if (this._entityProto) {
+      for (const row of materialized) {
+        if (Object.getPrototypeOf(row) !== this._entityProto) {
+          Object.setPrototypeOf(row, this._entityProto);
+        }
+      }
+    }
+    return materialized as Entity<Infer<T>, Mat>[];
   }
 
   // ─── Count ─────────────────────────────────────────────────────────────────
@@ -267,9 +327,9 @@ export class Repository<
 
   // ─── Update ────────────────────────────────────────────────────────────────
 
-  update(data: UpdateData<T, PK>): Infer<T> | null {
+  update(data: UpdateData<T, PK>): Entity<Infer<T>, Mat> | null {
     const obj = data as Record<string, unknown>;
-    const pk = this.descriptor.primaryKey as string;
+    const pk = this.descriptor.primaryKey.name;
     const pkVal = obj[pk];
     if (pkVal === undefined || pkVal === null) {
       throw new Error(`bunorm: update() requires primary key "${pk}"`);
@@ -306,13 +366,13 @@ export class Repository<
       }
     });
 
-    return merged;
+    return this._wrap(merged as Record<string, unknown>) as Entity<Infer<T>, Mat>;
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────────
 
   deleteById(id: Infer<T>[PK]): boolean {
-    const pk = this.descriptor.primaryKey as string;
+    const pk = this.descriptor.primaryKey.name;
 
     return this.db.transaction(() => {
       for (const sub of this.meta.subTables) {
@@ -341,7 +401,7 @@ export class Repository<
   ): Record<string, unknown> {
     const subRows = new Map<string, Record<string, unknown>[]>();
 
-    const pk = this.descriptor.primaryKey as string;
+    const pk = this.descriptor.primaryKey.name;
     const pkVal = flat[pk];
 
     for (const sub of this.meta.subTables) {

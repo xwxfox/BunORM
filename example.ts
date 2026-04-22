@@ -1,14 +1,15 @@
 /**
  * bunorm — usage example
- * Demonstrates: sales + inventory with sub-tables, relations,
- * typed filters, pagination, upsert, and materialization.
+ * Demonstrates: sales + inventory with sub-tables, typed column refs,
+ * relations builder, lazy materialization, batch materialization,
+ * typed filters, pagination, upsert, and clean serialization.
  */
 
 import {
   Object, String, Number, Integer, Boolean, Array, Optional, Literal,
   type Static,
 } from "typebox";
-import { createORM } from "./src/index.ts";
+import { createORM, table } from "./src/index.ts";
 
 // ─── 1. Define schemas ────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ type InventoryItem = Static<typeof InventoryItemSchema>;
 // ---
 
 const LineItemSchema = Object({
-  itemNumber: String(),   // FK → InventoryItem.sku
+  itemNumber: String(),
   quantity: Integer(),
   unitPrice: Number(),
   discount: Optional(Number()),
@@ -36,48 +37,42 @@ const LineItemSchema = Object({
 const SaleSchema = Object({
   id: String(),
   customerId: String(),
-  status: String(), // "pending" | "paid" | "cancelled"
+  status: String(),
   total: Number(),
-  createdAt: Integer(), // Unix ms
-  lineItems: Array(LineItemSchema), // ← auto sub-table: sales__lineItems
+  createdAt: Integer(),
+  lineItems: Array(LineItemSchema),
 });
 
 type Sale = Static<typeof SaleSchema>;
 
-// ─── 2. Create ORM (declarative) ──────────────────────────────────────────────
+// ─── 2. Create ORM with typed column refs ─────────────────────────────────────
 
 const orm = createORM({
   path: "shop.db",
   tables: {
-    inventory: {
-      schema: InventoryItemSchema,
-      primaryKey: "sku",
+    inventory: table(InventoryItemSchema, (s) => ({
+      primaryKey: s.sku,
       indexes: [
-        { columns: ["category"] },
-        { columns: ["active"] },
-        { columns: ["category", "active"], name: "idx_inventory_cat_active" },
+        { columns: [s.category] },
+        { columns: [s.active] },
+        { columns: [s.category, s.active], name: "idx_inventory_cat_active" },
       ],
-    },
-    sales: {
-      schema: SaleSchema,
-      primaryKey: "id",
+    })),
+    sales: table(SaleSchema, (s) => ({
+      primaryKey: s.id,
       indexes: [
-        { columns: ["customerId"] },
-        { columns: ["status"] },
-        { columns: ["createdAt"] },
-        { columns: ["customerId", "status"] },
+        { columns: [s.customerId] },
+        { columns: [s.status] },
+        { columns: [s.createdAt] },
+        { columns: [s.customerId, s.status] },
       ],
-    },
+    })),
   },
-  relations: {
-    sales: [
-      {
-        ownerField: "lineItems.itemNumber",
-        targetTableName: "inventory",
-        targetField: "sku",
-      },
-    ],
-  },
+  relations: (r) => [
+    r.from("sales")
+      .subTable("lineItems", "itemNumber")
+      .to("inventory", "sku", { as: "inventory" }),
+  ],
 });
 
 // ─── 3. Seed inventory ────────────────────────────────────────────────────────
@@ -198,21 +193,28 @@ console.log("\nUpserted widget price:", updatedWidget?.price);
 // ─── 8. Materialization — resolve cross-table FKs ─────────────────────────────
 
 const saleForMat = orm.sales.findById("SALE-001")!;
-const materialized = orm.materialize("sales", saleForMat);
+const materialized = saleForMat.materialize();
 
 console.log("\nMaterialized SALE-001 line items with resolved inventory:");
-for (const li of materialized.lineItems as Array<typeof sale1.lineItems[0] & { _resolved: InventoryItem | null }>) {
+for (const li of materialized.lineItems) {
   console.log(
-    ` - ${li.itemNumber} x${li.quantity} → resolved: ${li._resolved?.name ?? "NOT FOUND"}`
+    ` - ${li.itemNumber} x${li.quantity} → resolved: ${li.inventory?.name ?? "NOT FOUND"}`
   );
 }
 
 // Batch materialize (N+1 safe)
-const allSales = orm.sales.findMany();
-const allMaterialized = orm.materializeMany("sales", allSales);
-console.log("\nBatch materialized", allMaterialized.length, "sales");
+const allSales = orm.sales.findManyMaterialized();
+console.log("\nBatch materialized", allSales.length, "sales");
 
-// ─── 9. Multi-column index + range filter ────────────────────────────────────
+// ─── 9. Serialization stays clean ─────────────────────────────────────────────
+
+console.log("\nJSON.stringify(saleForMat):");
+console.log(JSON.stringify(saleForMat, null, 2));
+
+console.log("\nJSON.stringify(saleForMat.materialize()):");
+console.log(JSON.stringify(saleForMat.materialize(), null, 2));
+
+// ─── 10. Multi-column index + range filter ───────────────────────────────────
 
 const activeWidgets = orm.inventory.findMany({
   where: {
@@ -224,13 +226,12 @@ const activeWidgets = orm.inventory.findMany({
 });
 console.log("\nActive cheap widgets:", activeWidgets.length);
 
-// ─── 10. Delete ───────────────────────────────────────────────────────────────
+// ─── 11. Delete ───────────────────────────────────────────────────────────────
 
 const deleted = orm.sales.deleteById("SALE-002");
 console.log("\nDeleted SALE-002:", deleted);
 console.log("Remaining sales:", orm.sales.count());
 
-// ─── 11. Cleanup ──────────────────────────────────────────────────────────────
-
+// ─── 12. Cleanup ──────────────────────────────────────────────────────────────
 orm.close();
 console.log("\nDone — db closed cleanly.");

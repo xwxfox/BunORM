@@ -10,26 +10,13 @@ import type {
   TSchema,
   TProperties,
   Static,
-  TString,
-  TNumber,
-  TInteger,
-  TBoolean,
-  TLiteral,
 } from "typebox";
+import type { ColumnRef, TScalarSchema } from "./columns.ts";
+import type { TypedRelation } from "./typed-relation.ts";
 
 // ─── Primitive column types ──────────────────────────────────────────────────
 
 export type SqliteScalar = string | number | boolean | null | bigint;
-
-/** Typebox schemas that map to a single SQLite column */
-export type TScalarSchema =
-  | TString
-  | TNumber
-  | TInteger
-  | TBoolean
-  | TLiteral<string>
-  | TLiteral<number>
-  | TLiteral<boolean>;
 
 // ─── Schema introspection helpers ────────────────────────────────────────────
 
@@ -40,7 +27,7 @@ export type ScalarProperties<P extends TProperties> = {
 
 /** Extract only the array-of-object properties (sub-tables) */
 export type ArrayOfObjectProperties<P extends TProperties> = {
-  [K in keyof P as P[K] extends TArray<TObject<infer _>>
+  [K in keyof P as P[K] extends TArray<TObject>
     ? K
     : never]: P[K] extends TArray<infer Item> ? Item : never;
 };
@@ -83,6 +70,16 @@ export type SubTableItem<
   K extends SubTableKeys<T>
 > = T["properties"][K] extends TArray<infer Item extends TSchema>
   ? Static<Item>
+  : never;
+
+/** Scalar keys of a sub-table item schema */
+export type SubTableItemKeys<
+  T extends TObject,
+  K extends SubTableKeys<T>
+> = T["properties"][K] extends TArray<infer Item>
+  ? Item extends TObject
+    ? ScalarKeys<Item>
+    : never
   : never;
 
 // ─── Filter / Where types ─────────────────────────────────────────────────────
@@ -153,11 +150,17 @@ export type UpdateData<T extends TObject, PK extends ScalarKeys<T>> = Pick<
 
 // ─── Index definition ────────────────────────────────────────────────────────
 
-export interface IndexDefinition<T extends TObject> {
+export interface IndexDefinition {
   name?: string;
-  columns: ScalarKeys<T>[];
+  columns: ColumnRef<string, TScalarSchema>[];
   unique?: boolean;
 }
+
+// ─── Entity helper ───────────────────────────────────────────────────────────
+
+export type Entity<T, Mat = never> = [Mat] extends [never]
+  ? T
+  : T & { materialize(): Mat };
 
 // ─── Table config (what users pass per table in `createORM`) ─────────────────
 
@@ -166,13 +169,24 @@ export interface TableConfig<
   PK extends string = string
 > {
   schema: T;
-  primaryKey: PK;
-  indexes?: IndexDefinition<T>[];
+  primaryKey: ColumnRef<PK>;
+  indexes?: IndexDefinition[];
+  subTables?: Partial<Record<string, { indexes?: IndexDefinition[] }>>;
 }
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 
-/** A single validated cross-table relation */
+/** Runtime shape of a built relation (legacy) */
+export interface BuiltRelation {
+  ownerTable: string;
+  ownerField: string;
+  targetTable: string;
+  targetField: string;
+  as?: string;
+  kind: "scalar" | "subTable";
+}
+
+/** Legacy object-based relations config (kept for backward compat) */
 export interface RelationEntry<
   Tables extends Record<string, TableConfig>,
   Owner extends keyof Tables,
@@ -197,6 +211,110 @@ export type RelationsConfig<
     }[keyof Tables & string]
   >;
 };
+
+// ─── Materialized types ───────────────────────────────────────────────────────
+
+/** Extract names of scalar direct-merge relations for a table */
+export type ScalarMergeNames<
+  Rels extends readonly TypedRelation[],
+  Owner extends string
+> = Extract<
+  Rels[number],
+  { ownerTable: Owner; kind: "scalar" }
+> extends TypedRelation<any, any, any, any, any, infer A>
+  ? A extends string
+    ? A
+    : never
+  : never;
+
+/** Type of a specific scalar direct-merge relation */
+export type ScalarMergeType<
+  Tables extends Record<string, TableConfig>,
+  Rels extends readonly TypedRelation[],
+  Owner extends string,
+  Name extends string
+> = Extract<
+  Rels[number],
+  { ownerTable: Owner; kind: "scalar"; as: Name }
+> extends TypedRelation<any, any, infer TT, any, any, any>
+  ? TT extends keyof Tables
+    ? Infer<Tables[TT]["schema"]> | null
+    : never
+  : never;
+
+/** Scalar direct-merge properties added to materialized entity */
+export type ScalarMerge<
+  Tables extends Record<string, TableConfig>,
+  Rels extends readonly TypedRelation[],
+  Owner extends string
+> = {
+  [K in ScalarMergeNames<Rels, Owner>]: ScalarMergeType<
+    Tables,
+    Rels,
+    Owner,
+    K
+  >;
+};
+
+/** Extract names of sub-table direct-merge relations for a table+sub-field */
+export type SubMergeNames<
+  Rels extends readonly TypedRelation[],
+  Owner extends string,
+  Sub extends string
+> = Extract<
+  Rels[number],
+  { ownerTable: Owner; kind: "subTable"; ownerField: `${Sub}.${string}` }
+> extends TypedRelation<any, any, any, any, any, infer A>
+  ? A extends string
+    ? A
+    : never
+  : never;
+
+/** Type of a specific sub-table direct-merge relation */
+export type SubMergeType<
+  Tables extends Record<string, TableConfig>,
+  Rels extends readonly TypedRelation[],
+  Owner extends string,
+  Sub extends string,
+  Name extends string
+> = Extract<
+  Rels[number],
+  { ownerTable: Owner; kind: "subTable"; ownerField: `${Sub}.${string}`; as: Name }
+> extends TypedRelation<any, any, infer TT, any, any, any>
+  ? TT extends keyof Tables
+    ? Infer<Tables[TT]["schema"]> | null
+    : never
+  : never;
+
+/** Sub-table direct-merge properties added to array items */
+export type SubMerge<
+  Tables extends Record<string, TableConfig>,
+  Rels extends readonly TypedRelation[],
+  Owner extends string,
+  Sub extends string
+> = {
+  [K in SubMergeNames<Rels, Owner, Sub>]: SubMergeType<
+    Tables,
+    Rels,
+    Owner,
+    Sub,
+    K
+  >;
+};
+
+/** Full materialized entity type for a table */
+export type Materialized<
+  T extends TObject,
+  Tables extends Record<string, TableConfig>,
+  Rels extends readonly TypedRelation[],
+  Owner extends string
+> = {
+  [K in keyof Infer<T>]: K extends string
+    ? Infer<T>[K] extends Array<infer Item>
+      ? Array<Item & SubMerge<Tables, Rels, Owner, K>>
+      : Infer<T>[K]
+    : Infer<T>[K];
+} & ScalarMerge<Tables, Rels, Owner>;
 
 // ─── Result types ─────────────────────────────────────────────────────────────
 
