@@ -32,7 +32,7 @@ export interface CreateORMBaseOptions {
 }
 
 export interface CreateORMOptions<
-  T extends Record<string, TableConfig> = Record<string, TableConfig>,
+  T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > extends CreateORMBaseOptions {
   tables: T;
@@ -42,17 +42,21 @@ export interface CreateORMOptions<
 // ─── ORM return type ──────────────────────────────────────────────────────────
 
 export type BunORM<
-  Tables extends Record<string, TableConfig>,
+  Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > = {
-  [K in keyof Tables]: Repository<
-    Tables[K]["schema"],
-    Tables[K]["primaryKey"]["name"] extends ScalarKeys<Tables[K]["schema"]>
-      ? Tables[K]["primaryKey"]["name"]
-      : never,
-    Materialized<Tables[K]["schema"], Tables, Rels, K & string>,
-    TimestampShape<Tables[K]["timestamps"]>
-  >;
+  [K in keyof Tables]: Tables[K] extends TableConfig<
+    infer T,
+    infer PK,
+    infer TS
+  >
+    ? Repository<
+        T,
+        PK extends ScalarKeys<T> ? PK : never,
+        Materialized<T, Tables, Rels, K & string>,
+        TimestampShape<TS>
+      >
+    : never;
 } & {
   transaction<R>(fn: () => R): R;
   close(): void;
@@ -71,7 +75,7 @@ export type BunORM<
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 export function createORM<
-  const T extends Record<string, TableConfig>,
+  const T extends Record<string, TableConfig<any, any, any>>,
   const Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 >(opts: CreateORMOptions<T, Rels>): BunORM<T, Rels> {
   const db = new BunDatabase(opts);

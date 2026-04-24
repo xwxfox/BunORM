@@ -176,13 +176,14 @@ export type Entity<T, Mat = never, TS = {}> = [Mat] extends [never]
 
 export interface TableConfig<
   T extends TObject = TObject,
-  PK extends string = string
+  PK extends string = string,
+  TS extends TimestampConfig = undefined
 > {
   schema: T;
   primaryKey: ColumnRef<PK>;
   indexes?: IndexDefinition[];
   subTables?: Partial<Record<string, { indexes?: IndexDefinition[] }>>;
-  timestamps?: TimestampConfig;
+  timestamps?: TS;
 }
 
 // ─── Meta accessors ──────────────────────────────────────────────────────────
@@ -209,7 +210,7 @@ export interface BuiltRelation {
 
 /** Legacy object-based relations config (kept for backward compat) */
 export interface RelationEntry<
-  Tables extends Record<string, TableConfig>,
+  Tables extends Record<string, TableConfig<any, any, any>>,
   Owner extends keyof Tables,
   Target extends keyof Tables
 > {
@@ -220,7 +221,7 @@ export interface RelationEntry<
 
 /** Top-level relations config — each key is an owner table name */
 export type RelationsConfig<
-  Tables extends Record<string, TableConfig>
+  Tables extends Record<string, TableConfig<any, any, any>>
 > = {
   [K in keyof Tables & string]?: Array<
     {
@@ -250,7 +251,7 @@ export type ScalarMergeNames<
 
 /** Type of a specific scalar direct-merge relation */
 export type ScalarMergeType<
-  Tables extends Record<string, TableConfig>,
+  Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string,
   Name extends string
@@ -265,7 +266,7 @@ export type ScalarMergeType<
 
 /** Scalar direct-merge properties added to materialized entity */
 export type ScalarMerge<
-  Tables extends Record<string, TableConfig>,
+  Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string
 > = {
@@ -293,7 +294,7 @@ export type SubMergeNames<
 
 /** Type of a specific sub-table direct-merge relation */
 export type SubMergeType<
-  Tables extends Record<string, TableConfig>,
+  Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string,
   Sub extends string,
@@ -309,7 +310,7 @@ export type SubMergeType<
 
 /** Sub-table direct-merge properties added to array items */
 export type SubMerge<
-  Tables extends Record<string, TableConfig>,
+  Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string,
   Sub extends string
@@ -326,7 +327,7 @@ export type SubMerge<
 /** Full materialized entity type for a table */
 export type Materialized<
   T extends TObject,
-  Tables extends Record<string, TableConfig>,
+  Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string
 > = {

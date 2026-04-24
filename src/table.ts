@@ -7,7 +7,7 @@
 import type { TObject } from "typebox";
 import type { ColumnRef, TScalarSchema, ColumnRefs } from "./columns.ts";
 import { createColumnProxy } from "./columns.ts";
-import type { IndexDefinition } from "./types.ts";
+import type { IndexDefinition, TimestampConfig, TableConfig } from "./types.ts";
 
 export interface SubTableConfig {
   indexes?: IndexDefinition[];
@@ -15,16 +15,15 @@ export interface SubTableConfig {
 
 export interface TableDescriptor<
   T extends TObject,
-  PK extends string
-> {
-  schema: T;
-  primaryKey: ColumnRef<PK>;
-  indexes?: IndexDefinition[];
-  subTables?: Partial<Record<string, SubTableConfig>>;
-  timestamps?: true | { createdAt?: string; updatedAt?: string };
-}
+  PK extends string,
+  TS extends TimestampConfig = undefined
+> extends TableConfig<T, PK, TS> {}
 
-export function table<T extends TObject, PK extends string>(
+export function table<
+  T extends TObject,
+  PK extends string,
+  const TS extends TimestampConfig = undefined
+>(
   schema: T,
   configure: (
     columns: ColumnRefs<T>
@@ -32,9 +31,9 @@ export function table<T extends TObject, PK extends string>(
     primaryKey: ColumnRef<PK>;
     indexes?: IndexDefinition[];
     subTables?: Partial<Record<string, SubTableConfig>>;
-    timestamps?: true | { createdAt?: string; updatedAt?: string };
+    timestamps?: TS;
   }
-): TableDescriptor<T, PK> {
+): TableDescriptor<T, PK, TS> {
   const columns = createColumnProxy(schema);
   const config = configure(columns);
   return { schema, ...config };

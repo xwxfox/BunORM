@@ -9,7 +9,7 @@ import type { TableConfig, ScalarKeys } from "./types.ts";
 import type { TypedRelation } from "./typed-relation.ts";
 
 export class RelationBuilder<
-  Tables extends Record<string, TableConfig>
+  Tables extends Record<string, TableConfig<any, any, any>>
 > {
   private readonly relations: TypedRelation[] = [];
 
@@ -76,7 +76,7 @@ export class RelationBuilder<
   }
 }
 
-export function createRelationBuilder<T extends Record<string, TableConfig>>(
+export function createRelationBuilder<T extends Record<string, TableConfig<any, any, any>>>(
   tables: T
 ): RelationBuilder<T> {
   return new RelationBuilder(tables);

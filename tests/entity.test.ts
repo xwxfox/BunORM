@@ -231,4 +231,22 @@ describe("BunORM timestamps", () => {
     expect(updated).not.toBeNull();
     expect((updated!.updatedAt as number)).toBeGreaterThan(before);
   });
+
+  test("timestamps are typed as number", () => {
+    const sale = orm.sales.insert({
+      id: "T3",
+      status: "paid",
+      total: 10,
+      lineItems: [],
+    });
+
+    // Compile-time type assertion
+    const _createdAt: number = sale.createdAt;
+    const _updatedAt: number = sale.updatedAt;
+    void _createdAt;
+    void _updatedAt;
+
+    expect(typeof sale.createdAt).toBe("number");
+    expect(typeof sale.updatedAt).toBe("number");
+  });
 });
