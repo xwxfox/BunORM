@@ -18,7 +18,7 @@ export class RelationBuilder<
   from<Owner extends keyof Tables & string>(ownerTable: Owner) {
     const _ownerTable = ownerTable;
     return {
-      scalar: <Field extends ScalarKeys<Tables[Owner]["schema"]>>(
+      scalar: <const Field extends ScalarKeys<Tables[Owner]["schema"]>>(
         field: Field
       ) => ({
         to: <
@@ -43,9 +43,9 @@ export class RelationBuilder<
         },
       }),
 
-      subTable: (
-        subField: string,
-        subColumn: string
+      subTable: <const Sub extends string, const Col extends string>(
+        subField: Sub,
+        subColumn: Col
       ) => ({
         to: <
           Target extends keyof Tables & string,
@@ -55,7 +55,7 @@ export class RelationBuilder<
           targetTable: Target,
           targetField: TField,
           opts?: { as?: As }
-        ): TypedRelation<Owner, string, Target, TField, "subTable", As> => {
+        ): TypedRelation<Owner, `${Sub}.${Col}`, Target, TField, "subTable", As> => {
           const rel: TypedRelation = {
             ownerTable: _ownerTable,
             ownerField: `${subField}.${subColumn}`,
@@ -65,7 +65,7 @@ export class RelationBuilder<
             as: opts?.as,
           };
           this.relations.push(rel);
-          return rel as TypedRelation<Owner, string, Target, TField, "subTable", As>;
+          return rel as TypedRelation<Owner, `${Sub}.${Col}`, Target, TField, "subTable", As>;
         },
       }),
     };
