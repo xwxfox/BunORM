@@ -79,3 +79,18 @@ export type {
   SchemaChange,
   SyncPolicy,
 } from "./types.ts";
+
+// Event system
+export { EventBus } from "./events.ts";
+export type { TableEventPayload, TableOperation, BroadOperation } from "./types.ts";
+
+// Lifecycle
+export { LifecycleManager } from "./lifecycle.ts";
+export type { ORMContext, LifecycleHook } from "./lifecycle.ts";
+
+// Errors
+export { ORMError, raise, withTrace } from "./errors.ts";
+export type { ORMErrorContext, TraceEntry } from "./errors.ts";
+
+// QoL types
+export type { ErrorPolicy, UnlinkPolicy } from "./types.ts";

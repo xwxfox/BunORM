@@ -116,3 +116,25 @@ export class BunDatabase {
     this._stmtCache.clear();
   }
 }
+
+import { existsSync, unlinkSync } from "node:fs";
+
+export function resolveDbFilePaths(path: string): string[] {
+  if (path === ":memory:") return [];
+  return [
+    path,
+    `${path}-wal`,
+    `${path}-shm`,
+    `${path}-journal`,
+  ].filter((p) => existsSync(p));
+}
+
+export function unlinkDbFiles(path: string): void {
+  for (const p of resolveDbFilePaths(path)) {
+    try {
+      unlinkSync(p);
+    } catch {
+      // best-effort
+    }
+  }
+}

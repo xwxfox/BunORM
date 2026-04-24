@@ -24,8 +24,11 @@ import { inspectAllTables } from "./inspector.ts";
 import { computeDiff, type DesiredTable } from "./diff.ts";
 import { applySync } from "./sync.ts";
 import { migrate } from "./migrate.ts";
-import type { SyncPolicy } from "./types.ts";
+import type { SyncPolicy, ErrorPolicy, UnlinkPolicy } from "./types.ts";
 import { EventBus } from "./events.ts";
+import { LifecycleManager } from "./lifecycle.ts";
+import type { ORMContext, LifecycleHook } from "./lifecycle.ts";
+import { unlinkDbFiles } from "./database.ts";
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 
@@ -44,9 +47,24 @@ export interface CreateORMOptions<
   tables: T;
   relations?: RelationsConfig<any> | ((builder: RelationBuilder<T>) => Rels);
   sync?: SyncPolicy;
-  migrations?: {
-    dir: string;
-  };
+  migrations?: { dir: string };
+
+  // ─── Lifecycle & QoL ────────────────────────────────────────────────────────
+  onStart?: LifecycleHook<T, Rels>;
+  onReady?: LifecycleHook<T, Rels>;
+  onShutdown?: LifecycleHook<T, Rels>;
+  onExit?: LifecycleHook<T, Rels>;
+  autoMigrate?: boolean;
+  seed?: (orm: BunORM<T, Rels>) => void;
+  rebuildOnLaunch?: boolean;
+  flushOnStart?: Array<keyof T & string>;
+  flushOnExit?: Array<keyof T & string>;
+  dropOnStart?: Array<keyof T & string>;
+  dropOnExit?: Array<keyof T & string>;
+  flushMetaOnStart?: boolean;
+  flushMetaOnExit?: boolean;
+  errorPolicy?: ErrorPolicy;
+  unlinkDbFilesOnExit?: UnlinkPolicy;
 }
 
 // ─── ORM return type ──────────────────────────────────────────────────────────
@@ -93,6 +111,10 @@ export function createORM<
   const T extends Record<string, TableConfig<any, any, any>>,
   const Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 >(opts: CreateORMOptions<T, Rels>): BunORM<T, Rels> {
+  const dbPath = opts.path ?? ":memory:";
+  if (opts.rebuildOnLaunch && dbPath !== ":memory:") {
+    unlinkDbFiles(dbPath);
+  }
   const db = new BunDatabase(opts);
 
   // Validate tables object
@@ -136,6 +158,14 @@ export function createORM<
   for (const [name, repo] of repos) {
     repo.setEventBus(events);
   }
+
+  const lifecycle = new LifecycleManager<T, Rels>();
+  if (opts.onStart) lifecycle.onStart(opts.onStart);
+  if (opts.onReady) lifecycle.onReady(opts.onReady);
+  if (opts.onShutdown) lifecycle.onShutdown(opts.onShutdown);
+  if (opts.onExit) lifecycle.onExit(opts.onExit);
+
+  let ctx: ORMContext<T, Rels>;
 
   // Register and validate relations
   const relations: TypedRelation[] = [];
@@ -667,12 +697,59 @@ export function createORM<
     });
   }
 
+  // Build context
+  ctx = {
+    orm: accessors as BunORM<T, Rels>,
+    db,
+    meta,
+    tables: Object.keys(opts.tables),
+    repos,
+    logger: {
+      log: (...args: unknown[]) => { console.log("[bunorm]", ...args); },
+      error: (...args: unknown[]) => { console.error("[bunorm]", ...args); },
+    },
+  };
+
+  // Run startup hooks
+  lifecycle.runStart(ctx);
+
+  // Flush / drop tables on start
+  if (opts.flushOnStart) {
+    for (const name of opts.flushOnStart) {
+      repos.get(name)?.flush();
+    }
+  }
+  if (opts.dropOnStart) {
+    for (const name of opts.dropOnStart) {
+      repos.get(name)?.drop();
+    }
+  }
+  if (opts.flushMetaOnStart) {
+    for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
+      meta.delete(key);
+    }
+  }
+
+  // Auto-migrate
+  if (opts.autoMigrate && opts.migrations) {
+    migrate({ path: dbPath, migrationsDir: opts.migrations.dir });
+  }
+
+  // Seed
+  if (opts.seed) {
+    opts.seed(accessors as BunORM<T, Rels>);
+  }
+
+  // Ready
+  lifecycle.runReady(ctx);
+  events.emit("ready", { phase: "ready", timestamp: Date.now() });
+
   const migrateFn = async (): Promise<void> => {
     if (!opts.migrations) {
       throw new Error("bunorm: migrations dir not configured. Pass `migrations: { dir: ... }` to createORM().");
     }
     await migrate({
-      path: opts.path ?? ":memory:",
+      path: dbPath,
       migrationsDir: opts.migrations.dir,
     });
   };
@@ -687,9 +764,56 @@ export function createORM<
     },
   };
 
+  function close(): void {
+    lifecycle.runShutdown(ctx).then(() => {
+      // Flush / drop tables on exit
+      if (opts.flushOnExit) {
+        for (const name of opts.flushOnExit) {
+          repos.get(name)?.flush();
+        }
+      }
+      if (opts.dropOnExit) {
+        for (const name of opts.dropOnExit) {
+          repos.get(name)?.drop();
+        }
+      }
+      if (opts.flushMetaOnExit) {
+        for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
+          meta.delete(key);
+        }
+      }
+
+      db.close();
+
+      lifecycle.runExit(ctx).then(() => {
+        events.emit("exit", { phase: "exit", timestamp: Date.now() });
+
+        const unlinkPolicy = opts.unlinkDbFilesOnExit;
+        if (unlinkPolicy === true || unlinkPolicy === "onlyGraceful") {
+          unlinkDbFiles(dbPath);
+        }
+      });
+    });
+  }
+
+  // Crash-time unlink
+  if (opts.unlinkDbFilesOnExit === "any") {
+    const doUnlink = () => {
+      try { unlinkDbFiles(dbPath); } catch {}
+    };
+    process.on("exit", doUnlink);
+    process.on("SIGINT", () => { doUnlink(); process.exit(1); });
+    process.on("SIGTERM", () => { doUnlink(); process.exit(1); });
+    process.on("uncaughtException", (err) => {
+      events.emit("fail", { phase: "fail", error: err, timestamp: Date.now() });
+      doUnlink();
+      process.exit(1);
+    });
+  }
+
   Object.assign(accessors, {
     transaction: db.transaction.bind(db),
-    close: db.close.bind(db),
+    close,
     meta: metaAccessors,
     materialize,
     materializeMany,

@@ -29,11 +29,14 @@ export type LifecycleHook<T extends Record<string, any> = Record<string, any>, R
   | ((ctx: ORMContext<T, Rels>) => void)
   | ((ctx: ORMContext<T, Rels>) => Promise<void>);
 
-export class LifecycleManager {
-  private startHooks: LifecycleHook[] = [];
-  private readyHooks: LifecycleHook[] = [];
-  private shutdownHooks: LifecycleHook[] = [];
-  private exitHooks: LifecycleHook[] = [];
+export class LifecycleManager<
+  T extends Record<string, any> = Record<string, any>,
+  Rels extends readonly any[] = any
+> {
+  private startHooks: LifecycleHook<T, Rels>[] = [];
+  private readyHooks: LifecycleHook<T, Rels>[] = [];
+  private shutdownHooks: LifecycleHook<T, Rels>[] = [];
+  private exitHooks: LifecycleHook<T, Rels>[] = [];
 
   private _ready = false;
   private _shutdown = false;
@@ -41,25 +44,25 @@ export class LifecycleManager {
   get isReady() { return this._ready; }
   get isShutdown() { return this._shutdown; }
 
-  onStart(hook: LifecycleHook) { this.startHooks.push(hook); }
-  onReady(hook: LifecycleHook) { this.readyHooks.push(hook); }
-  onShutdown(hook: LifecycleHook) { this.shutdownHooks.push(hook); }
-  onExit(hook: LifecycleHook) { this.exitHooks.push(hook); }
+  onStart(hook: LifecycleHook<T, Rels>) { this.startHooks.push(hook); }
+  onReady(hook: LifecycleHook<T, Rels>) { this.readyHooks.push(hook); }
+  onShutdown(hook: LifecycleHook<T, Rels>) { this.shutdownHooks.push(hook); }
+  onExit(hook: LifecycleHook<T, Rels>) { this.exitHooks.push(hook); }
 
-  async runStart(ctx: ORMContext): Promise<void> {
+  async runStart(ctx: ORMContext<T, Rels>): Promise<void> {
     for (const h of this.startHooks) {
       await h(ctx);
     }
   }
 
-  async runReady(ctx: ORMContext): Promise<void> {
+  async runReady(ctx: ORMContext<T, Rels>): Promise<void> {
     for (const h of this.readyHooks) {
       await h(ctx);
     }
     this._ready = true;
   }
 
-  async runShutdown(ctx: ORMContext): Promise<void> {
+  async runShutdown(ctx: ORMContext<T, Rels>): Promise<void> {
     if (this._shutdown) return;
     this._shutdown = true;
     for (const h of this.shutdownHooks) {
@@ -67,7 +70,7 @@ export class LifecycleManager {
     }
   }
 
-  async runExit(ctx: ORMContext): Promise<void> {
+  async runExit(ctx: ORMContext<T, Rels>): Promise<void> {
     for (const h of this.exitHooks) {
       await h(ctx);
     }
