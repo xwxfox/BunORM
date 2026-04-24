@@ -48,3 +48,10 @@ export type { TypedRelation } from "./typed-relation.ts";
 
 // Schema utilities (for advanced use)
 export { introspectTable, buildCreateTableSQL } from "./schema.ts";
+
+// Metadata store
+export { MetaStore } from "./meta.ts";
+
+// Timestamps
+export { resolveTimestampNames, DEFAULT_TIMESTAMP_NAMES } from "./timestamps.ts";
+export type { TimestampConfig } from "./timestamps.ts";

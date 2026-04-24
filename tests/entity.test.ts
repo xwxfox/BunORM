@@ -150,4 +150,85 @@ describe("BunORM", () => {
     expect(deleted).toBe(true);
     expect(orm.sales.findById("S6")).toBeNull();
   });
+
+  test("flush clears data but keeps schema", () => {
+    orm.sales.insert({
+      id: "S7",
+      status: "paid",
+      total: 10,
+      lineItems: [],
+    });
+
+    orm.sales.flush();
+    expect(orm.sales.findById("S7")).toBeNull();
+
+    // Schema still exists — can insert again
+    orm.sales.insert({ id: "S7", status: "paid", total: 10, lineItems: [] });
+    expect(orm.sales.findById("S7")).not.toBeNull();
+  });
+
+  test("orm.flush clears all tables", () => {
+    orm.sales.insert({ id: "S8", status: "paid", total: 10, lineItems: [] });
+    orm.inventory.insert({ sku: "C", name: "Thing", price: 1, stock: 1 });
+
+    orm.flush();
+
+    expect(orm.sales.findById("S8")).toBeNull();
+    expect(orm.inventory.findById("C")).toBeNull();
+  });
+
+  test("schema hash stored in meta", () => {
+    const hash = orm.getMeta("_schema_hash");
+    expect(hash).not.toBeNull();
+  });
+});
+
+describe("BunORM timestamps", () => {
+  let orm: ReturnType<typeof createORM>;
+
+  beforeEach(() => {
+    orm = createORM({
+      tables: {
+        sales: table(SaleSchema, (s) => ({
+          primaryKey: s.id,
+          timestamps: true,
+        })),
+      },
+    });
+  });
+
+  afterEach(() => {
+    orm.close();
+  });
+
+  test("timestamps auto-injected on insert", () => {
+    const sale = orm.sales.insert({
+      id: "T1",
+      status: "paid",
+      total: 10,
+      lineItems: [],
+    });
+
+    expect(sale.createdAt).toBeTypeOf("number");
+    expect(sale.updatedAt).toBeTypeOf("number");
+  });
+
+  test("update refreshes updatedAt", () => {
+    const sale = orm.sales.insert({
+      id: "T2",
+      status: "paid",
+      total: 10,
+      lineItems: [],
+    });
+
+    const before = sale.updatedAt as number;
+
+    // Wait a tick to ensure time advances
+    const start = Date.now();
+    while (Date.now() === start) { /* spin */ }
+
+    const updated = orm.sales.update({ id: "T2", status: "refunded" });
+    expect(updated).not.toBeNull();
+    expect((updated!.updatedAt as number)).toBeGreaterThan(before);
+  });
 });

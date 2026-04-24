@@ -159,8 +159,8 @@ export interface IndexDefinition {
 // ─── Entity helper ───────────────────────────────────────────────────────────
 
 export type Entity<T, Mat = never> = [Mat] extends [never]
-  ? T
-  : T & { materialize(): Mat };
+  ? T & { createdAt?: number; updatedAt?: number }
+  : T & { createdAt?: number; updatedAt?: number } & { materialize(): Mat };
 
 // ─── Table config (what users pass per table in `createORM`) ─────────────────
 
@@ -172,6 +172,7 @@ export interface TableConfig<
   primaryKey: ColumnRef<PK>;
   indexes?: IndexDefinition[];
   subTables?: Partial<Record<string, { indexes?: IndexDefinition[] }>>;
+  timestamps?: true | { createdAt?: string; updatedAt?: string };
 }
 
 // ─── Relations ────────────────────────────────────────────────────────────────

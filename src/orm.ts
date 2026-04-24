@@ -17,6 +17,7 @@ import { BunDatabase } from "./database.ts";
 import { Repository } from "./repository.ts";
 import { introspectTable } from "./schema.ts";
 import { createRelationBuilder, type RelationBuilder } from "./relations.ts";
+import { MetaStore } from "./meta.ts";
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 
@@ -60,6 +61,9 @@ export type BunORM<
     ownerTable: Owner,
     records: Record<string, unknown>[]
   ): Array<Record<string, unknown>>;
+  flush(opts?: { includeMeta?: boolean }): void;
+  getMeta(key: string): Uint8Array | null;
+  setMeta(key: string, value: Uint8Array): void;
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -185,6 +189,23 @@ export function createORM<
       }
     }
   }
+
+  // ─── Persist metadata ───────────────────────────────────────────────────────
+
+  const meta = new MetaStore(db);
+
+  const allSchemas = Object.fromEntries(
+    tableEntries.map(([name, config]) => [name, config.schema])
+  );
+  const schemaJson = JSON.stringify(allSchemas);
+  const schemaHash = Bun.hash(schemaJson);
+  const schemaBytes = new TextEncoder().encode(schemaJson);
+
+  meta.setString("_schema_hash", String(schemaHash));
+  meta.setCompressed("_schema_compressed", schemaBytes);
+  meta.setJSON("_tables", Object.keys(opts.tables));
+  meta.setJSON("_relations", relations);
+  meta.setString("_bunorm_version", "0.0.2");
 
   // ─── Build and inject materializers ─────────────────────────────────────────
 
@@ -520,6 +541,30 @@ export function createORM<
     return results;
   }
 
+  // ─── Metadata helpers ───────────────────────────────────────────────────────
+
+  function flush(opts?: { includeMeta?: boolean }): void {
+    for (const repo of repos.values()) {
+      repo.flush();
+    }
+    if (opts?.includeMeta) {
+      for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
+        meta.delete(key);
+      }
+    }
+  }
+
+  function getMeta(key: string): Uint8Array | null {
+    const compressed = meta.getCompressed(key);
+    if (compressed) return compressed;
+    const str = meta.getString(key);
+    return str ? new TextEncoder().encode(str) : null;
+  }
+
+  function setMeta(key: string, value: Uint8Array): void {
+    meta.setCompressed(key, value);
+  }
+
   // ─── Inject materializers into repositories ─────────────────────────────────
 
   for (const [name, repo] of repos) {
@@ -551,6 +596,9 @@ export function createORM<
     close: db.close.bind(db),
     materialize,
     materializeMany,
+    flush,
+    getMeta,
+    setMeta,
   });
 
   return accessors;

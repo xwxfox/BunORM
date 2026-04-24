@@ -25,6 +25,12 @@ const InventoryItemSchema = Object({
 
 type InventoryItem = Static<typeof InventoryItemSchema>;
 
+const EventSchema = Object({
+  id: String(),
+  name: String(),
+  status: String(),
+});
+
 // ---
 
 const LineItemSchema = Object({
@@ -140,6 +146,7 @@ console.log("Inserted sales:", sale1.id, sale2.id);
 const fetched = orm.sales.findById("SALE-001");
 console.log("\nFetched SALE-001:", fetched?.status);
 console.log("Line items:", fetched?.lineItems.length, "items");
+console.log("Schema hash present:", orm.getMeta("_schema_hash") !== null);
 
 // Typed WHERE filter
 const paidSales = orm.sales.findMany({
@@ -235,3 +242,28 @@ console.log("Remaining sales:", orm.sales.count());
 // ─── 12. Cleanup ──────────────────────────────────────────────────────────────
 orm.close();
 console.log("\nDone — db closed cleanly.");
+
+// ─── 13. Timestamps demo ──────────────────────────────────────────────────────
+
+const tsORM = createORM({
+  path: "shop_timestamps.db",
+  tables: {
+    events: table(EventSchema, (s) => ({
+      primaryKey: s.id,
+      timestamps: true,
+    })),
+  },
+});
+
+const event = tsORM.events.insert({ id: "E1", name: "Launch", status: "active" });
+console.log("\nEvent createdAt:", event.createdAt);
+console.log("Event updatedAt:", event.updatedAt);
+
+// ─── 14. Flush demo ───────────────────────────────────────────────────────────
+
+tsORM.events.insert({ id: "E2", name: "Cleanup", status: "done" });
+console.log("Events before flush:", tsORM.events.count());
+tsORM.events.flush();
+console.log("Events after flush:", tsORM.events.count());
+
+tsORM.close();

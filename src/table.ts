@@ -21,6 +21,7 @@ export interface TableDescriptor<
   primaryKey: ColumnRef<PK>;
   indexes?: IndexDefinition[];
   subTables?: Partial<Record<string, SubTableConfig>>;
+  timestamps?: true | { createdAt?: string; updatedAt?: string };
 }
 
 export function table<T extends TObject, PK extends string>(
@@ -31,6 +32,7 @@ export function table<T extends TObject, PK extends string>(
     primaryKey: ColumnRef<PK>;
     indexes?: IndexDefinition[];
     subTables?: Partial<Record<string, SubTableConfig>>;
+    timestamps?: true | { createdAt?: string; updatedAt?: string };
   }
 ): TableDescriptor<T, PK> {
   const columns = createColumnProxy(schema);

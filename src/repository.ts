@@ -37,6 +37,8 @@ import {
   buildDelete,
   buildWhere,
 } from "./query-builder.ts";
+import { resolveTimestampNames } from "./timestamps.ts";
+import type { TimestampConfig } from "./timestamps.ts";
 
 // ─── Repository ───────────────────────────────────────────────────────────────
 
@@ -57,6 +59,9 @@ export class Repository<
   /** Shared prototype for entity objects */
   private _entityProto: object | null = null;
 
+  /** Resolved timestamp column names */
+  private readonly _timestampNames: { createdAt: string | null; updatedAt: string | null };
+
   /** Materializer closures injected after two-pass init */
   private _materialize?: (
     record: Record<string, unknown>
@@ -74,6 +79,7 @@ export class Repository<
     this.descriptor = config;
     this.db = db;
     this.meta = introspectTable(tableName, config.schema);
+    this._timestampNames = resolveTimestampNames(config.timestamps, this.meta);
 
     // Compile schema once — reused for every validate/parse call
     this.validator = Compile(config.schema);
@@ -150,6 +156,9 @@ export class Repository<
   insert(data: InsertData<T>): Entity<Infer<T>, Mat> {
     const parsed = this.parse(data);
     const obj = parsed as Record<string, unknown>;
+    const now = Date.now();
+    if (this._timestampNames.createdAt) obj[this._timestampNames.createdAt] = now;
+    if (this._timestampNames.updatedAt) obj[this._timestampNames.updatedAt] = now;
 
     this.db.transaction(() => {
       // Main row
@@ -184,6 +193,9 @@ export class Repository<
   }
 
   private _insertParsed(obj: Record<string, unknown>): void {
+    const now = Date.now();
+    if (this._timestampNames.createdAt) obj[this._timestampNames.createdAt] = now;
+    if (this._timestampNames.updatedAt) obj[this._timestampNames.updatedAt] = now;
     const flat = flattenRow(obj, this.meta);
     const { sql, params } = buildInsert(this.tableName, flat);
     this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
@@ -204,6 +216,9 @@ export class Repository<
   upsert(opts: UpsertOptions<T, PK>): Entity<Infer<T>, Mat> {
     const parsed = this.parse(opts.data);
     const obj = parsed as Record<string, unknown>;
+    const now = Date.now();
+    if (this._timestampNames.createdAt) obj[this._timestampNames.createdAt] = now;
+    if (this._timestampNames.updatedAt) obj[this._timestampNames.updatedAt] = now;
     const flat = flattenRow(obj, this.meta);
 
     const conflictCols = (
@@ -341,6 +356,9 @@ export class Repository<
 
     const merged = this.parse({ ...(existing as object), ...obj });
     const mergedObj = merged as Record<string, unknown>;
+    if (this._timestampNames.updatedAt) {
+      mergedObj[this._timestampNames.updatedAt] = Date.now();
+    }
     const flat = flattenRow(mergedObj, this.meta);
     const patch = Object.fromEntries(
       Object.entries(flat).filter(([k]) => k !== pk)
@@ -391,6 +409,22 @@ export class Repository<
     const { sql, params } = buildDelete(this.tableName, where);
     const result = this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
     return result.changes;
+  }
+
+  // ─── Table lifecycle ───────────────────────────────────────────────────────
+
+  flush(): void {
+    this.db.exec(`DELETE FROM "${this.tableName}"`);
+    for (const sub of this.meta.subTables) {
+      this.db.exec(`DELETE FROM "${sub.tableName}"`);
+    }
+  }
+
+  drop(): void {
+    for (const sub of this.meta.subTables) {
+      this.db.exec(`DROP TABLE IF EXISTS "${sub.tableName}"`);
+    }
+    this.db.exec(`DROP TABLE IF EXISTS "${this.tableName}"`);
   }
 
   // ─── Sub-table hydration ───────────────────────────────────────────────────
