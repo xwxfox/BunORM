@@ -45,7 +45,8 @@ import type { TimestampConfig } from "./timestamps.ts";
 export class Repository<
   T extends TObject,
   PK extends ScalarKeys<T>,
-  Mat = never
+  Mat = never,
+  TS = {}
 > {
   readonly tableName: string;
   readonly meta: TableMeta;
@@ -153,7 +154,7 @@ export class Repository<
 
   // ─── Insert ────────────────────────────────────────────────────────────────
 
-  insert(data: InsertData<T>): Entity<Infer<T>, Mat> {
+  insert(data: InsertData<T>): Entity<Infer<T>, Mat, TS> {
     const parsed = this.parse(data);
     const obj = parsed as Record<string, unknown>;
     const now = Date.now();
@@ -180,16 +181,16 @@ export class Repository<
       }
     });
 
-    return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat>;
+    return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
   }
 
   /** Insert many records in a single transaction */
-  insertMany(records: InsertData<T>[]): Entity<Infer<T>, Mat>[] {
+  insertMany(records: InsertData<T>[]): Entity<Infer<T>, Mat, TS>[] {
     const parsed = records.map((r) => this.parse(r));
     this.db.transaction(() => {
       for (const p of parsed) this._insertParsed(p as Record<string, unknown>);
     });
-    return parsed.map((p) => this._wrap(p as Record<string, unknown>) as Entity<Infer<T>, Mat>);
+    return parsed.map((p) => this._wrap(p as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>);
   }
 
   private _insertParsed(obj: Record<string, unknown>): void {
@@ -213,7 +214,7 @@ export class Repository<
 
   // ─── Upsert ────────────────────────────────────────────────────────────────
 
-  upsert(opts: UpsertOptions<T, PK>): Entity<Infer<T>, Mat> {
+  upsert(opts: UpsertOptions<T, PK>): Entity<Infer<T>, Mat, TS> {
     const parsed = this.parse(opts.data);
     const obj = parsed as Record<string, unknown>;
     const now = Date.now();
@@ -259,12 +260,12 @@ export class Repository<
       }
     });
 
-    return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat>;
+    return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
   }
 
   // ─── Find by PK ────────────────────────────────────────────────────────────
 
-  findById(id: Infer<T>[PK]): Entity<Infer<T>, Mat> | null {
+  findById(id: Infer<T>[PK]): Entity<Infer<T>, Mat, TS> | null {
     const pk = this.descriptor.primaryKey.name;
     const stmt = this.db.prepare(
       `SELECT * FROM "${this.tableName}" WHERE "${pk}" = ? LIMIT 1`
@@ -273,20 +274,20 @@ export class Repository<
       | Record<string, unknown>
       | undefined;
     if (!row) return null;
-    return this._wrap(this._hydrateOne(row)) as Entity<Infer<T>, Mat>;
+    return this._wrap(this._hydrateOne(row)) as Entity<Infer<T>, Mat, TS>;
   }
 
   // ─── Find many ─────────────────────────────────────────────────────────────
 
-  findMany(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat>[] {
+  findMany(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS>[] {
     const { sql, params } = buildSelect(this.tableName, opts);
     const stmt = this.db.prepare(sql);
     const rows = stmt.all(...(params as SQLQueryBindings[])) as Record<string, unknown>[];
-    return rows.map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat>);
+    return rows.map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat, TS>);
   }
 
   /** findMany with total count — useful for pagination UIs */
-  findPage(opts: FindOptions<T> = {}): PageResult<Entity<Infer<T>, Mat>> {
+  findPage(opts: FindOptions<T> = {}): PageResult<Entity<Infer<T>, Mat, TS>> {
     const { sql, params, countSql, countParams } = buildSelect(
       this.tableName,
       opts
@@ -294,7 +295,7 @@ export class Repository<
 
     const rows = (
       this.db.prepare(sql).all(...(params as SQLQueryBindings[])) as Record<string, unknown>[]
-    ).map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat>);
+    ).map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat, TS>);
 
     const countRow = this.db.prepare(countSql).get(...(countParams as SQLQueryBindings[])) as {
       _count: number;
@@ -308,13 +309,13 @@ export class Repository<
     };
   }
 
-  findOne(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat> | null {
+  findOne(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS> | null {
     const rows = this.findMany({ ...opts, limit: 1 });
     return rows[0] ?? null;
   }
 
   /** Batch materialized find — N+1 safe */
-  findManyMaterialized(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat>[] {
+  findManyMaterialized(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS>[] {
     const rows = this.findMany(opts);
     if (!this._materializeMany) return rows;
     const materialized = this._materializeMany(
@@ -328,7 +329,7 @@ export class Repository<
         }
       }
     }
-    return materialized as Entity<Infer<T>, Mat>[];
+    return materialized as Entity<Infer<T>, Mat, TS>[];
   }
 
   // ─── Count ─────────────────────────────────────────────────────────────────
@@ -342,7 +343,7 @@ export class Repository<
 
   // ─── Update ────────────────────────────────────────────────────────────────
 
-  update(data: UpdateData<T, PK>): Entity<Infer<T>, Mat> | null {
+  update(data: UpdateData<T, PK>): Entity<Infer<T>, Mat, TS> | null {
     const obj = data as Record<string, unknown>;
     const pk = this.descriptor.primaryKey.name;
     const pkVal = obj[pk];
@@ -384,7 +385,7 @@ export class Repository<
       }
     });
 
-    return this._wrap(merged as Record<string, unknown>) as Entity<Infer<T>, Mat>;
+    return this._wrap(merged as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────────

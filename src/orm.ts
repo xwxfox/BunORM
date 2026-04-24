@@ -11,6 +11,8 @@ import type {
   RelationsConfig,
   Materialized,
   Entity,
+  MetaAccessors,
+  TimestampShape,
 } from "./types.ts";
 import type { TypedRelation } from "./typed-relation.ts";
 import { BunDatabase } from "./database.ts";
@@ -48,11 +50,13 @@ export type BunORM<
     Tables[K]["primaryKey"]["name"] extends ScalarKeys<Tables[K]["schema"]>
       ? Tables[K]["primaryKey"]["name"]
       : never,
-    Materialized<Tables[K]["schema"], Tables, Rels, K & string>
+    Materialized<Tables[K]["schema"], Tables, Rels, K & string>,
+    TimestampShape<Tables[K]["timestamps"]>
   >;
 } & {
   transaction<R>(fn: () => R): R;
   close(): void;
+  meta: MetaAccessors;
   materialize<Owner extends keyof Tables & string>(
     ownerTable: Owner,
     record: Record<string, unknown>
@@ -62,8 +66,6 @@ export type BunORM<
     records: Record<string, unknown>[]
   ): Array<Record<string, unknown>>;
   flush(opts?: { includeMeta?: boolean }): void;
-  getMeta(key: string): Uint8Array | null;
-  setMeta(key: string, value: Uint8Array): void;
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -554,16 +556,26 @@ export function createORM<
     }
   }
 
-  function getMeta(key: string): Uint8Array | null {
-    const compressed = meta.getCompressed(key);
-    if (compressed) return compressed;
-    const str = meta.getString(key);
-    return str ? new TextEncoder().encode(str) : null;
-  }
+  // ─── Typed meta accessors ───────────────────────────────────────────────────
 
-  function setMeta(key: string, value: Uint8Array): void {
-    meta.setCompressed(key, value);
-  }
+  const metaAccessors: MetaAccessors = {
+    get schemaHash() {
+      return meta.getString("_schema_hash");
+    },
+    get schemaJSON() {
+      const compressed = meta.getCompressed("_schema_compressed");
+      return compressed ? new TextDecoder().decode(compressed) : null;
+    },
+    get tables() {
+      return meta.getJSON<string[]>("_tables");
+    },
+    get relations() {
+      return meta.getJSON<unknown[]>("_relations");
+    },
+    get version() {
+      return meta.getString("_bunorm_version");
+    },
+  };
 
   // ─── Inject materializers into repositories ─────────────────────────────────
 
@@ -594,11 +606,10 @@ export function createORM<
   Object.assign(accessors, {
     transaction: db.transaction.bind(db),
     close: db.close.bind(db),
+    meta: metaAccessors,
     materialize,
     materializeMany,
     flush,
-    getMeta,
-    setMeta,
   });
 
   return accessors;

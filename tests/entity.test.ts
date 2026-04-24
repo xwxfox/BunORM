@@ -178,8 +178,8 @@ describe("BunORM", () => {
   });
 
   test("schema hash stored in meta", () => {
-    const hash = orm.getMeta("_schema_hash");
-    expect(hash).not.toBeNull();
+    expect(orm.meta.schemaHash).not.toBeNull();
+    expect(orm.meta.tables).toEqual(["inventory", "sales"]);
   });
 });
 

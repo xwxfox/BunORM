@@ -156,11 +156,21 @@ export interface IndexDefinition {
   unique?: boolean;
 }
 
+// ─── Timestamp types ─────────────────────────────────────────────────────────
+
+export type TimestampConfig = true | { createdAt?: string; updatedAt?: string } | undefined;
+
+export type TimestampShape<T extends TimestampConfig> = [T] extends [true]
+  ? { createdAt: number; updatedAt: number }
+  : [T] extends [{ createdAt?: infer C; updatedAt?: infer U }]
+  ? (C extends string ? { [K in C]: number } : {}) & (U extends string ? { [K in U]: number } : {})
+  : {};
+
 // ─── Entity helper ───────────────────────────────────────────────────────────
 
-export type Entity<T, Mat = never> = [Mat] extends [never]
-  ? T & { createdAt?: number; updatedAt?: number }
-  : T & { createdAt?: number; updatedAt?: number } & { materialize(): Mat };
+export type Entity<T, Mat = never, TS = {}> = [Mat] extends [never]
+  ? T & TS
+  : T & TS & { materialize(): Mat };
 
 // ─── Table config (what users pass per table in `createORM`) ─────────────────
 
@@ -172,7 +182,17 @@ export interface TableConfig<
   primaryKey: ColumnRef<PK>;
   indexes?: IndexDefinition[];
   subTables?: Partial<Record<string, { indexes?: IndexDefinition[] }>>;
-  timestamps?: true | { createdAt?: string; updatedAt?: string };
+  timestamps?: TimestampConfig;
+}
+
+// ─── Meta accessors ──────────────────────────────────────────────────────────
+
+export interface MetaAccessors {
+  schemaHash: string | null;
+  schemaJSON: string | null;
+  tables: string[] | null;
+  relations: unknown[] | null;
+  version: string | null;
 }
 
 // ─── Relations ────────────────────────────────────────────────────────────────

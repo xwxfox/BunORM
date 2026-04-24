@@ -146,7 +146,7 @@ console.log("Inserted sales:", sale1.id, sale2.id);
 const fetched = orm.sales.findById("SALE-001");
 console.log("\nFetched SALE-001:", fetched?.status);
 console.log("Line items:", fetched?.lineItems.length, "items");
-console.log("Schema hash present:", orm.getMeta("_schema_hash") !== null);
+console.log("Schema hash present:", orm.meta.schemaHash !== null);
 
 // Typed WHERE filter
 const paidSales = orm.sales.findMany({
