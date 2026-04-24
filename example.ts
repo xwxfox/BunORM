@@ -84,32 +84,41 @@ const orm = createORM({
 // ─── 3. Seed inventory ────────────────────────────────────────────────────────
 
 orm.transaction(() => {
-  orm.inventory.insert({
-    sku: "WIDGET-A",
-    name: "Widget Alpha",
-    description: "A fine widget",
-    price: 9.99,
-    stock: 100,
-    category: "widgets",
-    active: true,
+  orm.inventory.upsert({
+    data: {
+      sku: "WIDGET-A",
+      name: "Widget Alpha",
+      description: "A fine widget",
+      price: 9.99,
+      stock: 100,
+      category: "widgets",
+      active: true,
+    },
+    conflictTarget: "sku"
   });
 
-  orm.inventory.insert({
-    sku: "GADGET-B",
-    name: "Gadget Beta",
-    price: 24.99,
-    stock: 50,
-    category: "gadgets",
-    active: true,
+  orm.inventory.upsert({
+    data: {
+      sku: "GADGET-B",
+      name: "Gadget Beta",
+      price: 24.99,
+      stock: 50,
+      category: "gadgets",
+      active: true,
+    },
+    conflictTarget: "sku"
   });
 
-  orm.inventory.insert({
-    sku: "GIZMO-C",
-    name: "Gizmo Gamma",
-    price: 4.99,
-    stock: 200,
-    category: "gizmos",
-    active: false,
+  orm.inventory.upsert({
+    data: {
+      sku: "GIZMO-C",
+      name: "Gizmo Gamma",
+      price: 4.99,
+      stock: 200,
+      category: "gizmos",
+      active: false,
+    },
+    conflictTarget: "sku"
   });
 });
 
@@ -253,6 +262,10 @@ const tsORM = createORM({
       timestamps: true,
     })),
   },
+  sync: (diff, db) => {
+    console.log("Schema differs!")
+    console.dir(diff)
+  }
 });
 
 const event = tsORM.events.insert({ id: "E1", name: "Launch", status: "active" });

@@ -20,6 +20,11 @@ import { Repository } from "./repository.ts";
 import { introspectTable } from "./schema.ts";
 import { createRelationBuilder, type RelationBuilder } from "./relations.ts";
 import { MetaStore } from "./meta.ts";
+import { inspectAllTables } from "./inspector.ts";
+import { computeDiff, type DesiredTable } from "./diff.ts";
+import { applySync } from "./sync.ts";
+import { migrate } from "./migrate.ts";
+import type { SyncPolicy } from "./types.ts";
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +42,10 @@ export interface CreateORMOptions<
 > extends CreateORMBaseOptions {
   tables: T;
   relations?: RelationsConfig<any> | ((builder: RelationBuilder<T>) => Rels);
+  sync?: SyncPolicy;
+  migrations?: {
+    dir: string;
+  };
 }
 
 // ─── ORM return type ──────────────────────────────────────────────────────────
@@ -70,6 +79,7 @@ export type BunORM<
     records: Record<string, unknown>[]
   ): Array<Record<string, unknown>>;
   flush(opts?: { includeMeta?: boolean }): void;
+  migrate(): Promise<void>;
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -196,6 +206,35 @@ export function createORM<
     }
   }
 
+  // ─── Build desired schema for diffing ───────────────────────────────────────
+
+  const desiredTables: DesiredTable[] = [];
+  for (const [name, config] of tableEntries) {
+    const meta = introspectTable(name, config.schema);
+    desiredTables.push({
+      name,
+      columns: meta.columns,
+      indexes: (config.indexes ?? []).map((idx) => ({
+        name: idx.name,
+        columns: idx.columns.map((c) => c.name),
+        unique: idx.unique,
+      })),
+      primaryKey: config.primaryKey.name,
+    });
+    for (const sub of meta.subTables) {
+      desiredTables.push({
+        name: sub.tableName,
+        columns: sub.columns,
+        indexes: (config.subTables?.[sub.fieldName]?.indexes ?? []).map((idx) => ({
+          name: idx.name,
+          columns: idx.columns.map((c) => c.name),
+          unique: idx.unique,
+        })),
+        primaryKey: "_id",
+      });
+    }
+  }
+
   // ─── Persist metadata ───────────────────────────────────────────────────────
 
   const meta = new MetaStore(db);
@@ -207,7 +246,17 @@ export function createORM<
   const schemaHash = Bun.hash(schemaJson);
   const schemaBytes = new TextEncoder().encode(schemaJson);
 
-  meta.setString("_schema_hash", String(schemaHash));
+  const storedHash = meta.getString("_schema_hash");
+  const currentHash = String(schemaHash);
+  const schemaChanged = storedHash !== currentHash;
+
+  if (schemaChanged && opts.sync && opts.sync !== "ignore") {
+    const actualTables = inspectAllTables(db);
+    const diff = computeDiff(desiredTables, actualTables);
+    applySync(diff, db, opts.sync, desiredTables);
+  }
+
+  meta.setString("_schema_hash", currentHash);
   meta.setCompressed("_schema_compressed", schemaBytes);
   meta.setJSON("_tables", Object.keys(opts.tables));
   meta.setJSON("_relations", relations);
@@ -607,6 +656,16 @@ export function createORM<
     });
   }
 
+  const migrateFn = async (): Promise<void> => {
+    if (!opts.migrations) {
+      throw new Error("bunorm: migrations dir not configured. Pass `migrations: { dir: ... }` to createORM().");
+    }
+    await migrate({
+      path: opts.path ?? ":memory:",
+      migrationsDir: opts.migrations.dir,
+    });
+  };
+
   Object.assign(accessors, {
     transaction: db.transaction.bind(db),
     close: db.close.bind(db),
@@ -614,6 +673,7 @@ export function createORM<
     materialize,
     materializeMany,
     flush,
+    migrate: migrateFn,
   });
 
   return accessors;

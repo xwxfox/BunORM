@@ -14,7 +14,7 @@ export function resolveTimestampNames(
   config: boolean | TimestampConfig | undefined,
   meta: TableMeta
 ): { createdAt: string | null; updatedAt: string | null } {
-  if (!config) {
+  if (config === false || !config) {
     return { createdAt: null, updatedAt: null };
   }
 

@@ -4,7 +4,7 @@
     "module": "esnext",
     "target": "esnext",
     "declaration": true,
-    "rootDir": "./src",
+    "rootDirs": [ "./src", "."],
     "outDir": "./lib",
     "types": ["@types/bun"],
     // Environment setup & latest features
@@ -30,6 +30,6 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["src", "src/example"],
-  "exclude": ["node_modules", "**/__tests__/*"]
+  "include": ["src", "tests", ".", "./example.ts", "*.ts"],
+  "exclude": ["node_modules", "lib", "**/__tests__/*"]
 }

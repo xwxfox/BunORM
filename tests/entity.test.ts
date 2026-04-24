@@ -27,27 +27,31 @@ const SaleSchema = Object({
   lineItems: Array(LineItemSchema),
 });
 
+function makeTestORM() {
+  return createORM({
+    tables: {
+      inventory: table(ItemSchema, (s) => ({
+        primaryKey: s.sku,
+        indexes: [{ columns: [s.name] }],
+      })),
+      sales: table(SaleSchema, (s) => ({
+        primaryKey: s.id,
+        indexes: [{ columns: [s.status] }],
+      })),
+    },
+    relations: (r) => [
+      r.from("sales")
+        .subTable("lineItems", "itemNumber")
+        .to("inventory", "sku", { as: "inventory" }),
+    ],
+  });
+}
+
 describe("BunORM", () => {
-  let orm: ReturnType<typeof createORM>;
+  let orm: ReturnType<typeof makeTestORM>;
 
   beforeEach(() => {
-    orm = createORM({
-      tables: {
-        inventory: table(ItemSchema, (s) => ({
-          primaryKey: s.sku,
-          indexes: [{ columns: [s.name] }],
-        })),
-        sales: table(SaleSchema, (s) => ({
-          primaryKey: s.id,
-          indexes: [{ columns: [s.status] }],
-        })),
-      },
-      relations: (r) => [
-        r.from("sales")
-          .subTable("lineItems", "itemNumber")
-          .to("inventory", "sku", { as: "inventory" }),
-      ],
-    });
+    orm = makeTestORM();
 
     orm.inventory.insert({ sku: "A", name: "Widget", price: 9.99, stock: 10 });
     orm.inventory.insert({ sku: "B", name: "Gadget", price: 24.99, stock: 5 });
@@ -98,12 +102,17 @@ describe("BunORM", () => {
       lineItems: [{ itemNumber: "A", quantity: 1, unitPrice: 9.99 }],
     });
 
-    const found = orm.sales.findById("S3")!;
-    const mat = found.materialize();
+    const found = orm.sales.findById("S3");
+    expect(found).not.toBeNull();
+    const mat = found!.materialize();
 
-    const li = mat.lineItems[0] as Record<string, unknown> & { related: { inventory: { name: string } | null } };
-    expect(li.related.inventory).not.toBeNull();
-    expect(li.related.inventory!.name).toBe("Widget");
+    const li = mat.lineItems[0];
+    if (li) {
+      expect(li.inventory).not.toBeNull();
+      if (li.inventory) {
+        expect(li.inventory.name).toBe("Widget");
+      }
+    }
   });
 
   test("findManyMaterialized returns batch resolved records", () => {
@@ -123,10 +132,17 @@ describe("BunORM", () => {
     const all = orm.sales.findManyMaterialized();
     expect(all).toHaveLength(2);
 
-    const mat = all[0].materialize();
-    const li = mat.lineItems[0] as Record<string, unknown> & { related: { inventory: { name: string } | null } };
-    expect(li.related.inventory).not.toBeNull();
-    expect(li.related.inventory!.name).toBe("Widget");
+    const first = all[0];
+    if (first) {
+      const mat = first.materialize();
+      const li = mat.lineItems[0];
+      if (li) {
+        expect(li.inventory).not.toBeNull();
+        if (li.inventory) {
+          expect(li.inventory.name).toBe("Widget");
+        }
+      }
+    }
   });
 
   test("tables without relations omit materialize", () => {
@@ -183,18 +199,22 @@ describe("BunORM", () => {
   });
 });
 
+function makeTimestampORM() {
+  return createORM({
+    tables: {
+      sales: table(SaleSchema, (s) => ({
+        primaryKey: s.id,
+        timestamps: true,
+      })),
+    },
+  });
+}
+
 describe("BunORM timestamps", () => {
-  let orm: ReturnType<typeof createORM>;
+  let orm: ReturnType<typeof makeTimestampORM>;
 
   beforeEach(() => {
-    orm = createORM({
-      tables: {
-        sales: table(SaleSchema, (s) => ({
-          primaryKey: s.id,
-          timestamps: true,
-        })),
-      },
-    });
+    orm = makeTimestampORM();
   });
 
   afterEach(() => {
@@ -221,7 +241,7 @@ describe("BunORM timestamps", () => {
       lineItems: [],
     });
 
-    const before = sale.updatedAt as number;
+    const before: number = sale.updatedAt;
 
     // Wait a tick to ensure time advances
     const start = Date.now();
@@ -229,7 +249,9 @@ describe("BunORM timestamps", () => {
 
     const updated = orm.sales.update({ id: "T2", status: "refunded" });
     expect(updated).not.toBeNull();
-    expect((updated!.updatedAt as number)).toBeGreaterThan(before);
+    if (updated) {
+      expect(updated.updatedAt).toBeGreaterThan(before);
+    }
   });
 
   test("timestamps are typed as number", () => {

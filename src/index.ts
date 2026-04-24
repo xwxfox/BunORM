@@ -55,3 +55,27 @@ export { MetaStore } from "./meta.ts";
 // Timestamps
 export { resolveTimestampNames, DEFAULT_TIMESTAMP_NAMES } from "./timestamps.ts";
 export type { TimestampConfig } from "./timestamps.ts";
+
+// Inspector
+export { inspectSchema, inspectAllTables } from "./inspector.ts";
+export type { InspectorTable, InspectorColumn, InspectorIndex } from "./inspector.ts";
+
+// Diff
+export { computeDiff } from "./diff.ts";
+export type { DesiredTable } from "./diff.ts";
+
+// Sync
+export { applySync } from "./sync.ts";
+
+// Migrate
+export { migrate } from "./migrate.ts";
+export { createMigration } from "./migration-template.ts";
+
+// Migration types
+export type {
+  Migration,
+  MigrateOptions,
+  SchemaDiff,
+  SchemaChange,
+  SyncPolicy,
+} from "./types.ts";

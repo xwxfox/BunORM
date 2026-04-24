@@ -158,9 +158,9 @@ export interface IndexDefinition {
 
 // ─── Timestamp types ─────────────────────────────────────────────────────────
 
-export type TimestampConfig = true | { createdAt?: string; updatedAt?: string } | undefined;
+export type TimestampConfig = true | false | { createdAt?: string; updatedAt?: string } | undefined;
 
-export type TimestampShape<T extends TimestampConfig> = [T] extends [true]
+export type TimestampShape<T extends TimestampConfig> = true extends T
   ? { createdAt: number; updatedAt: number }
   : [T] extends [{ createdAt?: infer C; updatedAt?: infer U }]
   ? (C extends string ? { [K in C]: number } : {}) & (U extends string ? { [K in U]: number } : {})
@@ -355,3 +355,43 @@ export interface UpsertOptions<T extends TObject, PK extends ScalarKeys<T>> {
   /** Which columns to update on conflict — defaults to all non-PK columns */
   update?: Array<ScalarKeys<T>>;
 }
+
+// ─── Migration types ──────────────────────────────────────────────────────────
+
+export interface Migration {
+  name: string;
+  date: string;
+  up: (db: import("./database.ts").BunDatabase) => void;
+  down?: (db: import("./database.ts").BunDatabase) => void;
+}
+
+export interface MigrateOptions {
+  path: string;
+  migrationsDir: string;
+  direction?: "up";
+  target?: string;
+}
+
+export type SchemaChange =
+  | { kind: "add-table"; table: string }
+  | { kind: "add-column"; table: string; column: { name: string; sqlType: string; nullable: boolean; optional: boolean }; hasDefault: boolean }
+  | { kind: "add-index"; table: string; index: { name: string; unique: number; columns: string[] } }
+  | { kind: "add-subtable"; table: string; subTable: { fieldName: string; tableName: string; columns: { name: string; sqlType: string; nullable: boolean; optional: boolean }[] } }
+  | { kind: "drop-column"; table: string; column: string }
+  | { kind: "rename-column"; table: string; from: string; to: string }
+  | { kind: "change-type"; table: string; column: string; from: string; to: string }
+  | { kind: "change-nullable"; table: string; column: string; to: boolean }
+  | { kind: "drop-table"; table: string }
+  | { kind: "change-pk"; table: string };
+
+export interface SchemaDiff {
+  safe: SchemaChange[];
+  unsafe: SchemaChange[];
+}
+
+export type SyncPolicy =
+  | "ignore"
+  | "warn"
+  | "error"
+  | "auto"
+  | ((diff: SchemaDiff, db: import("./database.ts").BunDatabase) => boolean | void);
