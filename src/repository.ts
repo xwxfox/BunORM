@@ -18,8 +18,13 @@ import type {
   WhereClause,
   TableConfig,
   Entity,
+  TableOperation,
+  BroadOperation,
+  TableEventPayload,
 } from "./types.ts";
 import type { BunDatabase, SQLQueryBindings } from "./database.ts";
+import type { EventBus } from "./events.ts";
+import { withTrace, raise } from "./errors.ts";
 import {
   introspectTable,
   buildCreateTableSQL,
@@ -71,6 +76,12 @@ export class Repository<
     records: Record<string, unknown>[]
   ) => Record<string, unknown>[];
 
+  private _events?: EventBus;
+
+  setEventBus(bus: EventBus): void {
+    this._events = bus;
+  }
+
   constructor(
     tableName: string,
     config: TableConfig<T, PK>,
@@ -118,6 +129,32 @@ export class Repository<
     return entity;
   }
 
+  private _emit<Op extends TableOperation>(
+    operation: Op,
+    payload: Omit<TableEventPayload<Infer<T>, Op>, "table" | "operation" | "timestamp">
+  ): void {
+    if (!this._events) return;
+    const ts = Date.now();
+    const base = { table: this.tableName, operation, timestamp: ts };
+    const full = { ...base, ...payload } as TableEventPayload<Infer<T>, Op>;
+
+    const opKey = `${this.tableName}.${operation}`;
+    if (this._events.has(opKey)) {
+      this._events.emit(opKey, full);
+    }
+
+    // Broad category mapping
+    let broad: BroadOperation | undefined;
+    if (operation.startsWith("find") || operation === "count") broad = "read";
+    else if (operation === "delete" || operation === "deleteWhere" || operation === "flush") broad = "delete";
+    else broad = "write";
+
+    const broadKey = `${this.tableName}.${broad}`;
+    if (this._events.has(broadKey)) {
+      this._events.emit(broadKey, { ...full, operation: broad });
+    }
+  }
+
   // ─── Migration ─────────────────────────────────────────────────────────────
 
   private _migrate(): void {
@@ -155,42 +192,48 @@ export class Repository<
   // ─── Insert ────────────────────────────────────────────────────────────────
 
   insert(data: InsertData<T>): Entity<Infer<T>, Mat, TS> {
-    const parsed = this.parse(data);
-    const obj = parsed as Record<string, unknown>;
-    const now = Date.now();
-    if (this._timestampNames.createdAt) obj[this._timestampNames.createdAt] = now;
-    if (this._timestampNames.updatedAt) obj[this._timestampNames.updatedAt] = now;
+    return withTrace("repository.insert", { table: this.tableName }, () => {
+      const parsed = this.parse(data);
+      const obj = parsed as Record<string, unknown>;
+      const now = Date.now();
+      if (this._timestampNames.createdAt) obj[this._timestampNames.createdAt] = now;
+      if (this._timestampNames.updatedAt) obj[this._timestampNames.updatedAt] = now;
 
-    this.db.transaction(() => {
-      // Main row
-      const flat = flattenRow(obj, this.meta);
-      const { sql, params } = buildInsert(this.tableName, flat);
-      this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
+      this.db.transaction(() => {
+        // Main row
+        const flat = flattenRow(obj, this.meta);
+        const { sql, params } = buildInsert(this.tableName, flat);
+        this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
 
-      const pkVal = obj[this.descriptor.primaryKey.name];
+        const pkVal = obj[this.descriptor.primaryKey.name];
 
-      // Sub-table rows
-      for (const sub of this.meta.subTables) {
-        const items = obj[sub.fieldName];
-        if (!globalThis.Array.isArray(items) || items.length === 0) continue;
-        const rows = flattenSubRows(pkVal as string | number, items, sub);
-        for (const row of rows) {
-          const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
-          this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
+        // Sub-table rows
+        for (const sub of this.meta.subTables) {
+          const items = obj[sub.fieldName];
+          if (!globalThis.Array.isArray(items) || items.length === 0) continue;
+          const rows = flattenSubRows(pkVal as string | number, items, sub);
+          for (const row of rows) {
+            const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
+            this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
+          }
         }
-      }
-    });
+      });
 
-    return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
+      this._emit("insert", { data: parsed });
+      return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
+    });
   }
 
   /** Insert many records in a single transaction */
   insertMany(records: InsertData<T>[]): Entity<Infer<T>, Mat, TS>[] {
-    const parsed = records.map((r) => this.parse(r));
-    this.db.transaction(() => {
-      for (const p of parsed) this._insertParsed(p as Record<string, unknown>);
+    return withTrace("repository.insertMany", { table: this.tableName }, () => {
+      const parsed = records.map((r) => this.parse(r));
+      this.db.transaction(() => {
+        for (const p of parsed) this._insertParsed(p as Record<string, unknown>);
+      });
+      this._emit("insertMany", { data: parsed });
+      return parsed.map((p) => this._wrap(p as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>);
     });
-    return parsed.map((p) => this._wrap(p as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>);
   }
 
   private _insertParsed(obj: Record<string, unknown>): void {
@@ -215,103 +258,122 @@ export class Repository<
   // ─── Upsert ────────────────────────────────────────────────────────────────
 
   upsert(opts: UpsertOptions<T, PK>): Entity<Infer<T>, Mat, TS> {
-    const parsed = this.parse(opts.data);
-    const obj = parsed as Record<string, unknown>;
-    const now = Date.now();
-    if (this._timestampNames.createdAt) obj[this._timestampNames.createdAt] = now;
-    if (this._timestampNames.updatedAt) obj[this._timestampNames.updatedAt] = now;
-    const flat = flattenRow(obj, this.meta);
+    return withTrace("repository.upsert", { table: this.tableName }, () => {
+      const parsed = this.parse(opts.data);
+      const obj = parsed as Record<string, unknown>;
+      const now = Date.now();
+      if (this._timestampNames.createdAt) obj[this._timestampNames.createdAt] = now;
+      if (this._timestampNames.updatedAt) obj[this._timestampNames.updatedAt] = now;
+      const flat = flattenRow(obj, this.meta);
 
-    const conflictCols = (
-      globalThis.Array.isArray(opts.conflictTarget)
-        ? opts.conflictTarget
-        : [opts.conflictTarget]
-    ) as string[];
+      const conflictCols = (
+        globalThis.Array.isArray(opts.conflictTarget)
+          ? opts.conflictTarget
+          : [opts.conflictTarget]
+      ) as string[];
 
-    const allCols = Object.keys(flat);
-    const updateCols =
-      (opts.update as string[] | undefined) ??
-      allCols.filter((c) => !conflictCols.includes(c));
+      const allCols = Object.keys(flat);
+      const updateCols =
+        (opts.update as string[] | undefined) ??
+        allCols.filter((c) => !conflictCols.includes(c));
 
-    this.db.transaction(() => {
-      const { sql, params } = buildUpsert(
-        this.tableName,
-        flat,
-        conflictCols,
-        updateCols
-      );
-      this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
+      this.db.transaction(() => {
+        const { sql, params } = buildUpsert(
+          this.tableName,
+          flat,
+          conflictCols,
+          updateCols
+        );
+        this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
 
-      const pkVal = obj[this.descriptor.primaryKey.name];
+        const pkVal = obj[this.descriptor.primaryKey.name];
 
-      // Re-sync sub-tables: delete old rows, re-insert
-      for (const sub of this.meta.subTables) {
-        this.db
-          .prepare(`DELETE FROM "${sub.tableName}" WHERE "_owner_id" = ?`)
-          .run(pkVal as string | number);
+        // Re-sync sub-tables: delete old rows, re-insert
+        for (const sub of this.meta.subTables) {
+          this.db
+            .prepare(`DELETE FROM "${sub.tableName}" WHERE "_owner_id" = ?`)
+            .run(pkVal as string | number);
 
-        const items = obj[sub.fieldName];
-        if (!globalThis.Array.isArray(items) || items.length === 0) continue;
-        const rows = flattenSubRows(pkVal as string | number, items, sub);
-        for (const row of rows) {
-          const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
-          this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
+          const items = obj[sub.fieldName];
+          if (!globalThis.Array.isArray(items) || items.length === 0) continue;
+          const rows = flattenSubRows(pkVal as string | number, items, sub);
+          for (const row of rows) {
+            const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
+            this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
+          }
         }
-      }
-    });
+      });
 
-    return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
+      this._emit("upsert", { data: parsed });
+      return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
+    });
   }
 
   // ─── Find by PK ────────────────────────────────────────────────────────────
 
   findById(id: Infer<T>[PK]): Entity<Infer<T>, Mat, TS> | null {
-    const pk = this.descriptor.primaryKey.name;
-    const stmt = this.db.prepare(
-      `SELECT * FROM "${this.tableName}" WHERE "${pk}" = ? LIMIT 1`
-    );
-    const row = stmt.get(id as string | number | bigint | null) as
-      | Record<string, unknown>
-      | undefined;
-    if (!row) return null;
-    return this._wrap(this._hydrateOne(row)) as Entity<Infer<T>, Mat, TS>;
+    return withTrace("repository.findById", { table: this.tableName }, () => {
+      const pk = this.descriptor.primaryKey.name;
+      const stmt = this.db.prepare(
+        `SELECT * FROM "${this.tableName}" WHERE "${pk}" = ? LIMIT 1`
+      );
+      const row = stmt.get(id as string | number | bigint | null) as
+        | Record<string, unknown>
+        | undefined;
+      if (!row) return null;
+      const result = this._wrap(this._hydrateOne(row)) as Entity<Infer<T>, Mat, TS>;
+      this._emit("findById", { id, result });
+      return result;
+    });
   }
 
   // ─── Find many ─────────────────────────────────────────────────────────────
 
   findMany(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS>[] {
-    const { sql, params } = buildSelect(this.tableName, opts);
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...(params as SQLQueryBindings[])) as Record<string, unknown>[];
-    return rows.map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat, TS>);
+    return withTrace("repository.findMany", { table: this.tableName }, () => {
+      const { sql, params } = buildSelect(this.tableName, opts);
+      const stmt = this.db.prepare(sql);
+      const rows = stmt.all(...(params as SQLQueryBindings[])) as Record<string, unknown>[];
+      const results = rows.map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat, TS>);
+      this._emit("findMany", { options: opts, result: results });
+      return results;
+    });
   }
 
   /** findMany with total count — useful for pagination UIs */
   findPage(opts: FindOptions<T> = {}): PageResult<Entity<Infer<T>, Mat, TS>> {
-    const { sql, params, countSql, countParams } = buildSelect(
-      this.tableName,
-      opts
-    );
+    return withTrace("repository.findPage", { table: this.tableName }, () => {
+      const { sql, params, countSql, countParams } = buildSelect(
+        this.tableName,
+        opts
+      );
 
-    const rows = (
-      this.db.prepare(sql).all(...(params as SQLQueryBindings[])) as Record<string, unknown>[]
-    ).map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat, TS>);
+      const rows = (
+        this.db.prepare(sql).all(...(params as SQLQueryBindings[])) as Record<string, unknown>[]
+      ).map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat, TS>);
 
-    const countRow = this.db.prepare(countSql).get(...(countParams as SQLQueryBindings[])) as {
-      _count: number;
-    };
+      const countRow = this.db.prepare(countSql).get(...(countParams as SQLQueryBindings[])) as {
+        _count: number;
+      };
 
-    return {
-      data: rows,
-      total: countRow._count,
-      limit: opts.limit ?? rows.length,
-      offset: opts.offset ?? 0,
-    };
+      const result = {
+        data: rows,
+        total: countRow._count,
+        limit: opts.limit ?? rows.length,
+        offset: opts.offset ?? 0,
+      };
+
+      this._emit("findPage", { options: opts, result });
+      return result;
+    });
   }
 
   findOne(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS> | null {
-    const rows = this.findMany({ ...opts, limit: 1 });
-    return rows[0] ?? null;
+    return withTrace("repository.findOne", { table: this.tableName }, () => {
+      const rows = this.findMany({ ...opts, limit: 1 });
+      this._emit("findOne", { options: opts, result: rows[0] ?? null });
+      return rows[0] ?? null;
+    });
   }
 
   /** Batch materialized find — N+1 safe */
@@ -335,90 +397,110 @@ export class Repository<
   // ─── Count ─────────────────────────────────────────────────────────────────
 
   count(where?: WhereClause<T>): number {
-    const { sql, params } = buildWhere(where);
-    const fullSql = `SELECT COUNT(*) as "_count" FROM "${this.tableName}" ${sql}`.trim();
-    const row = this.db.prepare(fullSql).get(...(params as SQLQueryBindings[])) as { _count: number };
-    return row._count;
+    return withTrace("repository.count", { table: this.tableName }, () => {
+      const { sql, params } = buildWhere(where);
+      const fullSql = `SELECT COUNT(*) as "_count" FROM "${this.tableName}" ${sql}`.trim();
+      const row = this.db.prepare(fullSql).get(...(params as SQLQueryBindings[])) as { _count: number };
+      this._emit("count", { where, result: row._count });
+      return row._count;
+    });
   }
 
   // ─── Update ────────────────────────────────────────────────────────────────
 
   update(data: UpdateData<T, PK>): Entity<Infer<T>, Mat, TS> | null {
-    const obj = data as Record<string, unknown>;
-    const pk = this.descriptor.primaryKey.name;
-    const pkVal = obj[pk];
-    if (pkVal === undefined || pkVal === null) {
-      throw new Error(`bunorm: update() requires primary key "${pk}"`);
-    }
-
-    // Fetch existing, merge, validate
-    const existing = this.findById(pkVal as Infer<T>[PK]);
-    if (!existing) return null;
-
-    const merged = this.parse({ ...(existing as object), ...obj });
-    const mergedObj = merged as Record<string, unknown>;
-    if (this._timestampNames.updatedAt) {
-      mergedObj[this._timestampNames.updatedAt] = Date.now();
-    }
-    const flat = flattenRow(mergedObj, this.meta);
-    const patch = Object.fromEntries(
-      Object.entries(flat).filter(([k]) => k !== pk)
-    );
-
-    this.db.transaction(() => {
-      const { sql, params } = buildUpdate(this.tableName, pk, pkVal, patch);
-      this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
-
-      // Re-sync sub-tables
-      for (const sub of this.meta.subTables) {
-        this.db
-          .prepare(`DELETE FROM "${sub.tableName}" WHERE "_owner_id" = ?`)
-          .run(pkVal as string | number);
-
-        const items = mergedObj[sub.fieldName];
-        if (!globalThis.Array.isArray(items) || items.length === 0) continue;
-        const rows = flattenSubRows(pkVal as string | number, items, sub);
-        for (const row of rows) {
-          const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
-          this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
-        }
+    return withTrace("repository.update", { table: this.tableName }, () => {
+      const obj = data as Record<string, unknown>;
+      const pk = this.descriptor.primaryKey.name;
+      const pkVal = obj[pk];
+      if (pkVal === undefined || pkVal === null) {
+        raise("UPDATE_MISSING_PK", `bunorm: update() requires primary key "${pk}"`, {
+          table: this.tableName,
+          column: pk,
+        });
       }
-    });
 
-    return this._wrap(merged as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
+      // Fetch existing, merge, validate
+      const existing = this.findById(pkVal as Infer<T>[PK]);
+      if (!existing) return null;
+
+      const merged = this.parse({ ...(existing as object), ...obj });
+      const mergedObj = merged as Record<string, unknown>;
+      if (this._timestampNames.updatedAt) {
+        mergedObj[this._timestampNames.updatedAt] = Date.now();
+      }
+      const flat = flattenRow(mergedObj, this.meta);
+      const patch = Object.fromEntries(
+        Object.entries(flat).filter(([k]) => k !== pk)
+      );
+
+      this.db.transaction(() => {
+        const { sql, params } = buildUpdate(this.tableName, pk, pkVal, patch);
+        this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
+
+        // Re-sync sub-tables
+        for (const sub of this.meta.subTables) {
+          this.db
+            .prepare(`DELETE FROM "${sub.tableName}" WHERE "_owner_id" = ?`)
+            .run(pkVal as string | number);
+
+          const items = mergedObj[sub.fieldName];
+          if (!globalThis.Array.isArray(items) || items.length === 0) continue;
+          const rows = flattenSubRows(pkVal as string | number, items, sub);
+          for (const row of rows) {
+            const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
+            this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
+          }
+        }
+      });
+
+      const result = this._wrap(merged as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
+      this._emit("update", { id: pkVal, data: obj as unknown as Partial<Infer<T>> });
+      return result;
+    });
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────────
 
   deleteById(id: Infer<T>[PK]): boolean {
-    const pk = this.descriptor.primaryKey.name;
+    return withTrace("repository.deleteById", { table: this.tableName }, () => {
+      const pk = this.descriptor.primaryKey.name;
 
-    return this.db.transaction(() => {
-      for (const sub of this.meta.subTables) {
-        this.db
-          .prepare(`DELETE FROM "${sub.tableName}" WHERE "_owner_id" = ?`)
+      const result = this.db.transaction(() => {
+        for (const sub of this.meta.subTables) {
+          this.db
+            .prepare(`DELETE FROM "${sub.tableName}" WHERE "_owner_id" = ?`)
+            .run(id as string | number);
+        }
+        const result = this.db
+          .prepare(`DELETE FROM "${this.tableName}" WHERE "${pk}" = ?`)
           .run(id as string | number);
-      }
-      const result = this.db
-        .prepare(`DELETE FROM "${this.tableName}" WHERE "${pk}" = ?`)
-        .run(id as string | number);
-      return result.changes > 0;
+        return result.changes > 0;
+      });
+      this._emit("delete", { id });
+      return result;
     });
   }
 
   deleteWhere(where: WhereClause<T>): number {
-    const { sql, params } = buildDelete(this.tableName, where);
-    const result = this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
-    return result.changes;
+    return withTrace("repository.deleteWhere", { table: this.tableName }, () => {
+      const { sql, params } = buildDelete(this.tableName, where);
+      const result = this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
+      this._emit("deleteWhere", { where, result: result.changes });
+      return result.changes;
+    });
   }
 
   // ─── Table lifecycle ───────────────────────────────────────────────────────
 
   flush(): void {
-    this.db.exec(`DELETE FROM "${this.tableName}"`);
-    for (const sub of this.meta.subTables) {
-      this.db.exec(`DELETE FROM "${sub.tableName}"`);
-    }
+    withTrace("repository.flush", { table: this.tableName }, () => {
+      this.db.exec(`DELETE FROM "${this.tableName}"`);
+      for (const sub of this.meta.subTables) {
+        this.db.exec(`DELETE FROM "${sub.tableName}"`);
+      }
+      this._emit("flush", {});
+    });
   }
 
   drop(): void {

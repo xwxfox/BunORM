@@ -25,6 +25,7 @@ import { computeDiff, type DesiredTable } from "./diff.ts";
 import { applySync } from "./sync.ts";
 import { migrate } from "./migrate.ts";
 import type { SyncPolicy } from "./types.ts";
+import { EventBus } from "./events.ts";
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,10 @@ export type BunORM<
   ): Array<Record<string, unknown>>;
   flush(opts?: { includeMeta?: boolean }): void;
   migrate(): Promise<void>;
+  events: {
+    on(event: string, listener: (payload: unknown) => void): () => void;
+    on(table: string, operation: string, listener: (payload: unknown) => void): () => void;
+  };
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -124,6 +129,12 @@ export function createORM<
 
     const repo = new Repository(name, config, db);
     repos.set(name, repo as Repository<TObject, string>);
+  }
+
+  // Wire EventBus into repositories
+  const events = new EventBus();
+  for (const [name, repo] of repos) {
+    repo.setEventBus(events);
   }
 
   // Register and validate relations
@@ -666,6 +677,16 @@ export function createORM<
     });
   };
 
+  const ormEvents = {
+    on(eventOrTable: string, opOrListener: any, maybeListener?: any): () => void {
+      if (typeof maybeListener === "function") {
+        const event = `${eventOrTable}.${opOrListener}`;
+        return events.on(event, maybeListener);
+      }
+      return events.on(eventOrTable, opOrListener);
+    },
+  };
+
   Object.assign(accessors, {
     transaction: db.transaction.bind(db),
     close: db.close.bind(db),
@@ -674,6 +695,7 @@ export function createORM<
     materializeMany,
     flush,
     migrate: migrateFn,
+    events: ormEvents,
   });
 
   return accessors;
