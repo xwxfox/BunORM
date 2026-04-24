@@ -82,3 +82,27 @@ export function raise(
     context,
   });
 }
+
+export type ErrorPolicy = "throw" | "emit" | "emit-swallow" | "crash";
+
+export function handleError(
+  err: ORMError,
+  policy: ErrorPolicy,
+  emit?: (event: string, payload: unknown) => void
+): never | void {
+  if (emit) {
+    emit("error", { phase: "error", error: err, timestamp: Date.now() });
+  }
+
+  switch (policy) {
+    case "emit-swallow":
+      return;
+    case "crash":
+      console.error("[bunorm] fatal error — crashing", err);
+      process.exit(1);
+    case "emit":
+    case "throw":
+    default:
+      throw err;
+  }
+}

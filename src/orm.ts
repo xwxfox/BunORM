@@ -28,6 +28,7 @@ import type { SyncPolicy, ErrorPolicy, UnlinkPolicy } from "./types.ts";
 import { EventBus } from "./events.ts";
 import { LifecycleManager } from "./lifecycle.ts";
 import type { ORMContext, LifecycleHook } from "./lifecycle.ts";
+import { handleError, ORMError, raise, currentTrace } from "./errors.ts";
 import { unlinkDbFiles } from "./database.ts";
 
 // ─── Options ──────────────────────────────────────────────────────────────────
@@ -115,12 +116,16 @@ export function createORM<
   if (opts.rebuildOnLaunch && dbPath !== ":memory:") {
     unlinkDbFiles(dbPath);
   }
+  const errorPolicy = opts.errorPolicy ?? "throw";
   const db = new BunDatabase(opts);
+  let accessors: BunORM<T, Rels> = {} as BunORM<T, Rels>;
+  const events = new EventBus();
 
-  // Validate tables object
+  try {
+    // Validate tables object
   const tableEntries = Object.entries(opts.tables);
   if (tableEntries.length === 0) {
-    throw new Error("bunorm: at least one table must be defined in `tables`");
+    raise("NO_TABLES", "bunorm: at least one table must be defined in `tables`");
   }
 
   // Create repositories with eager validation
@@ -133,8 +138,10 @@ export function createORM<
     // Validate primaryKey
     const pkName = config.primaryKey.name;
     if (!colNames.has(pkName)) {
-      throw new Error(
-        `bunorm: primary key "${pkName}" is not a scalar column in table "${name}"`
+      raise(
+        "INVALID_PK",
+        `bunorm: primary key "${pkName}" is not a scalar column in table "${name}"`,
+        { table: name, column: pkName }
       );
     }
 
@@ -142,8 +149,10 @@ export function createORM<
     for (const idx of config.indexes ?? []) {
       for (const colRef of idx.columns) {
         if (!colNames.has(colRef.name)) {
-          throw new Error(
-            `bunorm: index column "${colRef.name}" not found in table "${name}"`
+          raise(
+            "INVALID_INDEX",
+            `bunorm: index column "${colRef.name}" not found in table "${name}"`,
+            { table: name, column: colRef.name }
           );
         }
       }
@@ -154,7 +163,6 @@ export function createORM<
   }
 
   // Wire EventBus into repositories
-  const events = new EventBus();
   for (const [name, repo] of repos) {
     repo.setEventBus(events);
   }
@@ -182,16 +190,20 @@ export function createORM<
 
       const ownerRepo = repos.get(ownerTable);
       if (!ownerRepo) {
-        throw new Error(
-          `bunorm: relation owner table "${ownerTable}" not found in tables`
+        raise(
+          "INVALID_RELATION",
+          `bunorm: relation owner table "${ownerTable}" not found in tables`,
+          { table: ownerTable }
         );
       }
 
       for (const rel of rels) {
         const targetRepo = repos.get(rel.targetTableName);
         if (!targetRepo) {
-          throw new Error(
-            `bunorm: relation target table "${rel.targetTableName}" not found in tables`
+          raise(
+            "INVALID_RELATION",
+            `bunorm: relation target table "${rel.targetTableName}" not found in tables`,
+            { table: rel.targetTableName }
           );
         }
 
@@ -201,8 +213,10 @@ export function createORM<
           const [col = ""] = parts;
           const ownerCols = new Set(ownerRepo.meta.columns.map((c) => c.name));
           if (!ownerCols.has(col)) {
-            throw new Error(
-              `bunorm: relation ownerField "${rel.ownerField}" is not a scalar column in table "${ownerTable}"`
+            raise(
+              "INVALID_RELATION",
+              `bunorm: relation ownerField "${rel.ownerField}" is not a scalar column in table "${ownerTable}"`,
+              { table: ownerTable, field: rel.ownerField }
             );
           }
         } else if (parts.length === 2) {
@@ -211,27 +225,35 @@ export function createORM<
             (st) => st.fieldName === subField
           );
           if (!sub) {
-            throw new Error(
-              `bunorm: relation ownerField "${rel.ownerField}" references unknown sub-table "${subField}" in table "${ownerTable}"`
+            raise(
+              "INVALID_RELATION",
+              `bunorm: relation ownerField "${rel.ownerField}" references unknown sub-table "${subField}" in table "${ownerTable}"`,
+              { table: ownerTable, field: rel.ownerField }
             );
           }
           const subCols = new Set(sub.columns.map((c) => c.name));
           if (!subCols.has(subCol)) {
-            throw new Error(
-              `bunorm: relation ownerField "${rel.ownerField}" references unknown column "${subCol}" in sub-table "${subField}" of table "${ownerTable}"`
+            raise(
+              "INVALID_RELATION",
+              `bunorm: relation ownerField "${rel.ownerField}" references unknown column "${subCol}" in sub-table "${subField}" of table "${ownerTable}"`,
+              { table: ownerTable, field: rel.ownerField }
             );
           }
         } else {
-          throw new Error(
-            `bunorm: relation ownerField "${rel.ownerField}" has too many dot segments (max 2 allowed)`
+          raise(
+            "INVALID_RELATION",
+            `bunorm: relation ownerField "${rel.ownerField}" has too many dot segments (max 2 allowed)`,
+            { table: ownerTable, field: rel.ownerField }
           );
         }
 
         // Validate targetField
         const targetCols = new Set(targetRepo.meta.columns.map((c) => c.name));
         if (!targetCols.has(rel.targetField)) {
-          throw new Error(
-            `bunorm: relation targetField "${rel.targetField}" is not a scalar column in table "${rel.targetTableName}"`
+          raise(
+            "INVALID_RELATION",
+            `bunorm: relation targetField "${rel.targetField}" is not a scalar column in table "${rel.targetTableName}"`,
+            { table: rel.targetTableName, field: rel.targetField }
           );
         }
 
@@ -685,7 +707,7 @@ export function createORM<
 
   // ─── Build accessor object with getters ─────────────────────────────────────
 
-  const accessors = {} as BunORM<T, Rels>;
+  accessors = {} as BunORM<T, Rels>;
 
   for (const name of Object.keys(opts.tables)) {
     Object.defineProperty(accessors, name, {
@@ -746,7 +768,7 @@ export function createORM<
 
   const migrateFn = async (): Promise<void> => {
     if (!opts.migrations) {
-      throw new Error("bunorm: migrations dir not configured. Pass `migrations: { dir: ... }` to createORM().");
+      raise("MIGRATIONS_NOT_CONFIGURED", "bunorm: migrations dir not configured. Pass `migrations: { dir: ... }` to createORM().");
     }
     await migrate({
       path: dbPath,
@@ -821,6 +843,17 @@ export function createORM<
     migrate: migrateFn,
     events: ormEvents,
   });
+
+  } catch (err) {
+    if (err instanceof ORMError) {
+      events.emit("fail", { phase: "fail", error: err, timestamp: Date.now() });
+      handleError(err, errorPolicy, events.emit.bind(events));
+    } else {
+      const wrapped = new ORMError(String(err), { code: "UNEXPECTED", trace: currentTrace() });
+      events.emit("fail", { phase: "fail", error: wrapped, timestamp: Date.now() });
+      handleError(wrapped, errorPolicy, events.emit.bind(events));
+    }
+  }
 
   return accessors;
 }
