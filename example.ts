@@ -25,7 +25,7 @@ const InventoryItemSchema = Object({
 
 type InventoryItem = Static<typeof InventoryItemSchema>;
 
-const EventSchema = Object({
+const __eventschema = Object({
   id: String(),
   name: String(),
   status: String(),
@@ -257,7 +257,7 @@ console.log("\nDone — db closed cleanly.");
 const tsORM = createORM({
   path: "shop_timestamps.db",
   tables: {
-    events: table(EventSchema, (s) => ({
+    __events: table(__eventschema, (s) => ({
       primaryKey: s.id,
       timestamps: true,
     })),
@@ -268,15 +268,15 @@ const tsORM = createORM({
   }
 });
 
-const event = tsORM.events.insert({ id: "E1", name: "Launch", status: "active" });
+const event = tsORM.__events.insert({ id: "E1", name: "Launch", status: "active" });
 console.log("\nEvent createdAt:", event.createdAt);
 console.log("Event updatedAt:", event.updatedAt);
 
 // ─── 14. Flush demo ───────────────────────────────────────────────────────────
 
-tsORM.events.insert({ id: "E2", name: "Cleanup", status: "done" });
-console.log("Events before flush:", tsORM.events.count());
-tsORM.events.flush();
-console.log("Events after flush:", tsORM.events.count());
+tsORM.__events.insert({ id: "E2", name: "Cleanup", status: "done" });
+console.log("__events before flush:", tsORM.__events.count());
+tsORM.__events.flush();
+console.log("__events after flush:", tsORM.__events.count());
 
 tsORM.close();
