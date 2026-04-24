@@ -395,3 +395,35 @@ export type SyncPolicy =
   | "error"
   | "auto"
   | ((diff: SchemaDiff, db: import("./database.ts").BunDatabase) => boolean | void);
+
+// ─── Event types ──────────────────────────────────────────────────────────────
+
+export type TableOperation =
+  | "insert"
+  | "insertMany"
+  | "update"
+  | "delete"
+  | "deleteWhere"
+  | "upsert"
+  | "findById"
+  | "findMany"
+  | "findOne"
+  | "findPage"
+  | "count"
+  | "flush";
+
+export type BroadOperation = "read" | "write" | "delete";
+
+export interface TableEventPayload<
+  T = unknown,
+  Op extends TableOperation = TableOperation
+> {
+  table: string;
+  operation: Op;
+  data?: T | T[] | Partial<T>;
+  result?: T | T[] | PageResult<T> | number | null;
+  id?: unknown;
+  where?: unknown;
+  options?: unknown;
+  timestamp: number;
+}
