@@ -427,3 +427,9 @@ export interface TableEventPayload<
   options?: unknown;
   timestamp: number;
 }
+
+// ─── Lifecycle config primitives ──────────────────────────────────────────────
+
+export type ErrorPolicy = "throw" | "emit" | "emit-swallow" | "crash";
+
+export type UnlinkPolicy = true | "onlyGraceful" | "any" | false | undefined;
