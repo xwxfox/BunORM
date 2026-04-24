@@ -9,9 +9,10 @@ describe("ORMError", () => {
       });
     } catch (e) {
       expect(e).toBeInstanceOf(ORMError);
-      expect(e.code).toBe("VALIDATION_FAILED");
-      expect(e.trace.length).toBeGreaterThan(0);
-      expect(e.context.field).toBe("email");
+      const err = e as ORMError;
+      expect(err.code).toBe("VALIDATION_FAILED");
+      expect(err.trace.length).toBeGreaterThan(0);
+      expect(err.context.field).toBe("email");
     }
   });
 
@@ -44,9 +45,10 @@ describe("Error policy", () => {
       });
     } catch (e) {
       expect(e).toBeInstanceOf(ORMError);
-      expect(e.code).toBe("TEST_ERROR");
-      expect(e.trace.length).toBeGreaterThan(0);
-      expect(e.context.table).toBe("users");
+      const err = e as ORMError;
+      expect(err.code).toBe("TEST_ERROR");
+      expect(err.trace.length).toBeGreaterThan(0);
+      expect(err.context.table).toBe("users");
     }
   });
 });
