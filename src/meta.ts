@@ -27,13 +27,9 @@ type MetaRecord = Static<typeof MetaRecordSchema>;
 
 const SchemaHashSchema = Type.String();
 
-const SchemaJSONSchema = Type.Record(
-  Type.String(),
-  Type.Object({
-    primaryKey: Type.String(),
-    columns: Type.Array(Type.String()),
-  })
-);
+// Stored schema JSON is Record<string, TObject> — we can't deeply validate
+// TypeBox schemas at runtime without the compiler, so we accept any object.
+const SchemaJSONSchema = Type.Record(Type.String(), Type.Unknown());
 
 const TablesSchema = Type.Array(Type.String());
 
@@ -173,7 +169,11 @@ export class MetaStore {
   getJSON<T>(key: string): T | null {
     const row = this.getRow(key);
     if (row == null) return null;
-    return JSON.parse(row.value);
+    try {
+      return JSON.parse(row.value);
+    } catch {
+      return null;
+    }
   }
 
   setJSON(key: string, value: unknown): void {

@@ -10,6 +10,7 @@ import type {
   OrderByClause,
   FindOptions,
 } from "./types.ts";
+import { raise } from "./errors.ts";
 
 // ─── WHERE builder ────────────────────────────────────────────────────────────
 
@@ -189,7 +190,9 @@ export function buildUpdate<T extends TObject>(
   patch: Record<string, unknown>
 ): { sql: string; params: unknown[] } {
   const entries = Object.entries(patch).filter(([k]) => k !== pk);
-  if (entries.length === 0) throw new Error("bunorm: no columns to update");
+  if (entries.length === 0) {
+    raise("NO_COLUMNS_TO_UPDATE", "bunorm: no columns to update", { table: tableName });
+  }
   const sets = entries.map(([k]) => `"${k}" = ?`).join(", ");
   return {
     sql: `UPDATE "${tableName}" SET ${sets} WHERE "${pk}" = ?`,

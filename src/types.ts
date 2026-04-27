@@ -382,7 +382,8 @@ export type SchemaChange =
   | { kind: "change-type"; table: string; column: string; from: string; to: string }
   | { kind: "change-nullable"; table: string; column: string; to: boolean }
   | { kind: "drop-table"; table: string }
-  | { kind: "change-pk"; table: string };
+  | { kind: "change-pk"; table: string }
+  | { kind: "drop-index"; table: string; index: { name: string; unique: number; columns: string[] } };
 
 export interface SchemaDiff {
   safe: SchemaChange[];

@@ -46,7 +46,7 @@ const SaleSchema = Object({
 });
 type Sale = Static<typeof SaleSchema>;
 
-const LogSchema = Object({
+const ActivitySchema = Object({
   id: String(),
   message: String(),
   level: String(),
@@ -74,7 +74,7 @@ const orm = createORM({
         { columns: [s.status] },
       ],
     })),
-    logs: table(LogSchema, (s) => ({
+    activity: table(ActivitySchema, (s) => ({
       primaryKey: s.id,
     })),
   },
@@ -91,7 +91,7 @@ const orm = createORM({
   rebuildOnLaunch: true,
 
   /** Flush only the logs table before we start (demo of per-table start flush) */
-  flushOnStart: ["logs"],
+  flushOnStart: ["activity"],
 
   /** Seed function runs after sync but before ready */
   seed: (o) => {
@@ -127,7 +127,7 @@ const orm = createORM({
   /** Shutdown hook — before DB closes */
   onShutdown: (ctx) => {
     console.log("[lifecycle:onShutdown] Persisting final state...");
-    ctx.orm.logs.insert({ id: "shutdown", message: "ORM shutting down", level: "info" });
+    ctx.orm.activity.insert({ id: "shutdown", message: "ORM shutting down", level: "info" });
   },
 
   /** Exit hook — after DB is closed */
@@ -244,11 +244,11 @@ console.log("Version:", orm._meta.version);
 // ─── 9. Flush ─────────────────────────────────────────────────────────────────
 
 console.log("\n─── Flush ───");
-console.log("Logs before flush:", orm.logs.count());
-orm.logs.insert({ id: "L1", message: "hello", level: "debug" });
-console.log("Logs after insert:", orm.logs.count());
+console.log("Logs before flush:", orm.activity.count());
+orm.activity.insert({ id: "L1", message: "hello", level: "debug" });
+console.log("Logs after insert:", orm.activity.count());
 orm._flush(); // flushes ALL tables
-console.log("Logs after orm._flush():", orm.logs.count());
+console.log("Logs after orm._flush():", orm.activity.count());
 
 // ─── 10. Remove event listeners ───────────────────────────────────────────────
 

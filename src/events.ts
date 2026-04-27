@@ -94,8 +94,8 @@ export class EventBus {
       for (const fn of set) {
         try {
           fn(payload);
-        } catch {
-          // Listener errors must not break the emitter
+        } catch (err) {
+          console.error(`[bunorm] event listener error for "${event}":`, err);
         }
       }
     }
@@ -110,8 +110,8 @@ export class EventBus {
         for (const fn of wildcardSet) {
           try {
             fn(payload);
-          } catch {
-            // Listener errors must not break the emitter
+          } catch (err) {
+            console.error(`[bunorm] event listener error for "${wildcard}":`, err);
           }
         }
       }
@@ -119,7 +119,10 @@ export class EventBus {
   }
 
   emitIf(event: string, payload: unknown): void {
-    if (this.has(event)) {
+    // Check exact-match listeners OR wildcard listeners for this table
+    const dotIndex = event.indexOf(".");
+    const hasWildcard = dotIndex > 0 && this.has(`${event.slice(0, dotIndex)}.*`);
+    if (this.has(event) || hasWildcard) {
       this.emit(event, payload);
     }
   }

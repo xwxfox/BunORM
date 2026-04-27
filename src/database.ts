@@ -82,10 +82,16 @@ export class BunDatabase {
 
   /**
    * Cleanly close the database.
-   * Disables WAL persistence so no -wal/-shm sidecar files are left behind
-   * (important on macOS / cross-platform deploys).
+   * Finalizes all cached statements and disables WAL persistence
+   * so no -wal/-shm sidecar files are left behind.
    */
   close(): void {
+    // Finalize all cached statements before closing the DB
+    for (const stmt of this._stmtCache.values()) {
+      try { stmt.finalize(); } catch { /* already finalized */ }
+    }
+    this._stmtCache.clear();
+
     try {
       this.db.fileControl(constants.SQLITE_FCNTL_PERSIST_WAL, 0);
       this.db.run("PRAGMA wal_checkpoint(TRUNCATE);");
@@ -99,13 +105,25 @@ export class BunDatabase {
    * Prepared statement cache — keyed by the SQL string.
    * Statements are compiled once and reused, which is the primary
    * performance win over naïve query execution.
+   * Limited to 256 entries to prevent unbounded growth from
+   * dynamic queries (e.g. varying IN(...) list sizes).
    */
+  private static readonly _MAX_CACHE_SIZE = 256;
   private readonly _stmtCache = new Map<string, BunStatement>();
 
   prepare(sql: string): BunStatement {
     let stmt = this._stmtCache.get(sql);
     if (!stmt) {
       stmt = this.db.prepare(sql);
+      // Evict oldest entry if at capacity (Map preserves insertion order)
+      if (this._stmtCache.size >= BunDatabase._MAX_CACHE_SIZE) {
+        const firstKey = this._stmtCache.keys().next().value;
+        if (firstKey !== undefined) {
+          const old = this._stmtCache.get(firstKey);
+          try { old?.finalize(); } catch { /* ignore */ }
+          this._stmtCache.delete(firstKey);
+        }
+      }
       this._stmtCache.set(sql, stmt);
     }
     return stmt as BunStatement;
@@ -113,6 +131,9 @@ export class BunDatabase {
 
   /** Clear the statement cache (e.g. after schema changes) */
   clearCache(): void {
+    for (const stmt of this._stmtCache.values()) {
+      try { stmt.finalize(); } catch { /* ignore */ }
+    }
     this._stmtCache.clear();
   }
 }

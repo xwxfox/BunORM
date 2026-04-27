@@ -110,468 +110,299 @@ export function createORM<
   const Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 >(opts: CreateORMOptions<T, Rels>): BunORM<T, Rels> {
   const dbPath = opts.path ?? ":memory:";
-  if (opts.rebuildOnLaunch && dbPath !== ":memory:") {
+  if (opts.rebuildOnLaunch && dbPath !== ":memory:" && dbPath.length > 0) {
     unlinkDbFiles(dbPath);
   }
-  const errorPolicy = opts.errorPolicy ?? "throw";
   const db = new BunDatabase(opts);
   let accessors: BunORM<T, Rels> = {} as BunORM<T, Rels>;
   const events = new EventBus();
 
   try {
     // Validate tables object
-  const tableEntries = Object.entries(opts.tables);
-  if (tableEntries.length === 0) {
-    raise("NO_TABLES", "bunorm: at least one table must be defined in `tables`");
-  }
-
-  // Create repositories with eager validation
-  const repos = new Map<string, Repository<TObject, string>>();
-
-  for (const [name, config] of tableEntries) {
-    const meta = introspectTable(name, config.schema);
-    const colNames = new Set(meta.columns.map((c) => c.name));
-
-    // Validate primaryKey
-    const pkName = config.primaryKey.name;
-    if (!colNames.has(pkName)) {
-      raise(
-        "INVALID_PK",
-        `bunorm: primary key "${pkName}" is not a scalar column in table "${name}"`,
-        { table: name, column: pkName }
-      );
+    const tableEntries = Object.entries(opts.tables);
+    if (tableEntries.length === 0) {
+      raise("NO_TABLES", "bunorm: at least one table must be defined in `tables`");
     }
 
-    // Validate indexes
-    for (const idx of config.indexes ?? []) {
-      for (const colRef of idx.columns) {
-        if (!colNames.has(colRef.name)) {
-          raise(
-            "INVALID_INDEX",
-            `bunorm: index column "${colRef.name}" not found in table "${name}"`,
-            { table: name, column: colRef.name }
-          );
-        }
-      }
-    }
+    // Create repositories with eager validation
+    const repos = new Map<string, Repository<TObject, string>>();
 
-    const repo = new Repository(name, config, db);
-    repos.set(name, repo as Repository<TObject, string>);
-  }
+    for (const [name, config] of tableEntries) {
+      const meta = introspectTable(name, config.schema);
+      const colNames = new Set(meta.columns.map((c) => c.name));
 
-  // Wire EventBus into repositories
-  for (const [name, repo] of repos) {
-    repo.setEventBus(events);
-  }
-
-  const lifecycle = new LifecycleManager<T, Rels>();
-  if (opts.onStart) lifecycle.onStart(opts.onStart);
-  if (opts.onReady) lifecycle.onReady(opts.onReady);
-  if (opts.onShutdown) lifecycle.onShutdown(opts.onShutdown);
-  if (opts.onExit) lifecycle.onExit(opts.onExit);
-
-  let ctx: ORMContext<T, Rels>;
-
-  // Register and validate relations
-  const relations: TypedRelation[] = [];
-
-  if (typeof opts.relations === "function") {
-    const builder = createRelationBuilder(opts.tables);
-    const built = opts.relations(builder);
-    for (const rel of built) {
-      relations.push(rel);
-    }
-  } else {
-    for (const [ownerTable, rels] of Object.entries(opts.relations ?? {})) {
-      if (!rels) continue;
-
-      const ownerRepo = repos.get(ownerTable);
-      if (!ownerRepo) {
+      // Validate primaryKey
+      const pkName = config.primaryKey.name;
+      if (!colNames.has(pkName)) {
         raise(
-          "INVALID_RELATION",
-          `bunorm: relation owner table "${ownerTable}" not found in tables`,
-          { table: ownerTable }
+          "INVALID_PK",
+          `bunorm: primary key "${pkName}" is not a scalar column in table "${name}"`,
+          { table: name, column: pkName }
         );
       }
 
-      for (const rel of rels) {
-        const targetRepo = repos.get(rel.targetTableName);
-        if (!targetRepo) {
+      // Validate indexes
+      for (const idx of config.indexes ?? []) {
+        for (const colRef of idx.columns) {
+          if (!colNames.has(colRef.name)) {
+            raise(
+              "INVALID_INDEX",
+              `bunorm: index column "${colRef.name}" not found in table "${name}"`,
+              { table: name, column: colRef.name }
+            );
+          }
+        }
+      }
+
+      const repo = new Repository(name, config, db);
+      repos.set(name, repo as Repository<TObject, string>);
+    }
+
+    // Wire EventBus into repositories
+    for (const [name, repo] of repos) {
+      repo.setEventBus(events);
+    }
+
+    const lifecycle = new LifecycleManager<T, Rels>();
+    if (opts.onStart) lifecycle.onStart(opts.onStart);
+    if (opts.onReady) lifecycle.onReady(opts.onReady);
+    if (opts.onShutdown) lifecycle.onShutdown(opts.onShutdown);
+    if (opts.onExit) lifecycle.onExit(opts.onExit);
+
+    let ctx: ORMContext<T, Rels>;
+
+    // Register and validate relations
+    const relations: TypedRelation[] = [];
+
+    if (typeof opts.relations === "function") {
+      const builder = createRelationBuilder(opts.tables);
+      const built = opts.relations(builder);
+      for (const rel of built) {
+        relations.push(rel);
+      }
+    } else {
+      for (const [ownerTable, rels] of Object.entries(opts.relations ?? {})) {
+        if (!rels) continue;
+
+        const ownerRepo = repos.get(ownerTable);
+        if (!ownerRepo) {
           raise(
             "INVALID_RELATION",
-            `bunorm: relation target table "${rel.targetTableName}" not found in tables`,
-            { table: rel.targetTableName }
+            `bunorm: relation owner table "${ownerTable}" not found in tables`,
+            { table: ownerTable }
           );
         }
 
-        // Validate ownerField
-        const parts = rel.ownerField.split(".");
-        if (parts.length === 1) {
-          const [col = ""] = parts;
-          const ownerCols = new Set(ownerRepo.meta.columns.map((c) => c.name));
-          if (!ownerCols.has(col)) {
+        for (const rel of rels) {
+          const targetRepo = repos.get(rel.targetTableName);
+          if (!targetRepo) {
             raise(
               "INVALID_RELATION",
-              `bunorm: relation ownerField "${rel.ownerField}" is not a scalar column in table "${ownerTable}"`,
+              `bunorm: relation target table "${rel.targetTableName}" not found in tables`,
+              { table: rel.targetTableName }
+            );
+          }
+
+          // Validate ownerField
+          const parts = rel.ownerField.split(".");
+          if (parts.length === 1) {
+            const [col = ""] = parts;
+            const ownerCols = new Set(ownerRepo.meta.columns.map((c) => c.name));
+            if (!ownerCols.has(col)) {
+              raise(
+                "INVALID_RELATION",
+                `bunorm: relation ownerField "${rel.ownerField}" is not a scalar column in table "${ownerTable}"`,
+                { table: ownerTable, field: rel.ownerField }
+              );
+            }
+          } else if (parts.length === 2) {
+            const [subField = "", subCol = ""] = parts;
+            const sub = ownerRepo.meta.subTables.find(
+              (st) => st.fieldName === subField
+            );
+            if (!sub) {
+              raise(
+                "INVALID_RELATION",
+                `bunorm: relation ownerField "${rel.ownerField}" references unknown sub-table "${subField}" in table "${ownerTable}"`,
+                { table: ownerTable, field: rel.ownerField }
+              );
+            }
+            const subCols = new Set(sub.columns.map((c) => c.name));
+            if (!subCols.has(subCol)) {
+              raise(
+                "INVALID_RELATION",
+                `bunorm: relation ownerField "${rel.ownerField}" references unknown column "${subCol}" in sub-table "${subField}" of table "${ownerTable}"`,
+                { table: ownerTable, field: rel.ownerField }
+              );
+            }
+          } else {
+            raise(
+              "INVALID_RELATION",
+              `bunorm: relation ownerField "${rel.ownerField}" has too many dot segments (max 2 allowed)`,
               { table: ownerTable, field: rel.ownerField }
             );
           }
-        } else if (parts.length === 2) {
-          const [subField = "", subCol = ""] = parts;
-          const sub = ownerRepo.meta.subTables.find(
-            (st) => st.fieldName === subField
-          );
-          if (!sub) {
+
+          // Validate targetField
+          const targetCols = new Set(targetRepo.meta.columns.map((c) => c.name));
+          if (!targetCols.has(rel.targetField)) {
             raise(
               "INVALID_RELATION",
-              `bunorm: relation ownerField "${rel.ownerField}" references unknown sub-table "${subField}" in table "${ownerTable}"`,
-              { table: ownerTable, field: rel.ownerField }
+              `bunorm: relation targetField "${rel.targetField}" is not a scalar column in table "${rel.targetTableName}"`,
+              { table: rel.targetTableName, field: rel.targetField }
             );
           }
-          const subCols = new Set(sub.columns.map((c) => c.name));
-          if (!subCols.has(subCol)) {
-            raise(
-              "INVALID_RELATION",
-              `bunorm: relation ownerField "${rel.ownerField}" references unknown column "${subCol}" in sub-table "${subField}" of table "${ownerTable}"`,
-              { table: ownerTable, field: rel.ownerField }
-            );
-          }
-        } else {
-          raise(
-            "INVALID_RELATION",
-            `bunorm: relation ownerField "${rel.ownerField}" has too many dot segments (max 2 allowed)`,
-            { table: ownerTable, field: rel.ownerField }
-          );
-        }
 
-        // Validate targetField
-        const targetCols = new Set(targetRepo.meta.columns.map((c) => c.name));
-        if (!targetCols.has(rel.targetField)) {
-          raise(
-            "INVALID_RELATION",
-            `bunorm: relation targetField "${rel.targetField}" is not a scalar column in table "${rel.targetTableName}"`,
-            { table: rel.targetTableName, field: rel.targetField }
-          );
-        }
-
-        relations.push({
-          ownerTable,
-          ownerField: rel.ownerField,
-          targetTable: rel.targetTableName,
-          targetField: rel.targetField,
-          kind: parts.length === 1 ? "scalar" : "subTable",
-          as: undefined,
-        });
-      }
-    }
-  }
-
-  // ─── Build desired schema for diffing ───────────────────────────────────────
-
-  const desiredTables: DesiredTable[] = [];
-  for (const [name, config] of tableEntries) {
-    const meta = introspectTable(name, config.schema);
-    desiredTables.push({
-      name,
-      columns: meta.columns,
-      indexes: (config.indexes ?? []).map((idx) => ({
-        name: idx.name,
-        columns: idx.columns.map((c) => c.name),
-        unique: idx.unique,
-      })),
-      primaryKey: config.primaryKey.name,
-    });
-    for (const sub of meta.subTables) {
-      desiredTables.push({
-        name: sub.tableName,
-        columns: sub.columns,
-        indexes: (config.subTables?.[sub.fieldName]?.indexes ?? []).map((idx) => ({
-          name: idx.name,
-          columns: idx.columns.map((c) => c.name),
-          unique: idx.unique,
-        })),
-        primaryKey: "_id",
-      });
-    }
-  }
-
-  // ─── Persist metadata ───────────────────────────────────────────────────────
-
-  const meta = new MetaStore(db);
-
-  const allSchemas = Object.fromEntries(
-    tableEntries.map(([name, config]) => [name, config.schema])
-  );
-  const schemaJson = JSON.stringify(allSchemas);
-  const schemaHash = Bun.hash(schemaJson);
-  const schemaBytes = new TextEncoder().encode(schemaJson);
-
-  const storedHash = meta.getString("_schema_hash");
-  const currentHash = String(schemaHash);
-  const schemaChanged = storedHash !== currentHash;
-
-  if (schemaChanged && opts.sync && opts.sync !== "ignore") {
-    const actualTables = inspectAllTables(db);
-    const diff = computeDiff(desiredTables, actualTables);
-    applySync(diff, db, opts.sync, desiredTables);
-  }
-
-  meta.setString("_schema_hash", currentHash);
-  meta.setCompressed("_schema_compressed", schemaBytes);
-  meta.setJSON("_tables", Object.keys(opts.tables));
-  meta.setJSON("_relations", relations);
-  meta.setString("_bunorm_version", "0.0.2");
-
-  // ─── Build and inject materializers ─────────────────────────────────────────
-
-  function buildLazyResolver(
-    ownerTable: string,
-    record: Record<string, unknown>
-  ) {
-    const rels = relations.filter((r) => r.ownerTable === ownerTable);
-    if (rels.length === 0) return undefined;
-
-    return (relationName: string) => {
-      const rel = rels.find(
-        (r) => r.as === relationName || r.ownerField === relationName
-      );
-      if (!rel) return undefined;
-
-      const targetRepo = repos.get(rel.targetTable);
-      if (!targetRepo) return null;
-
-      if (rel.kind === "scalar") {
-        const fkVal = record[rel.ownerField];
-        if (fkVal == null) return null;
-        const found = targetRepo.raw(
-          `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" = ? LIMIT 1`,
-          fkVal
-        )[0];
-        return found ?? null;
-      }
-
-      if (rel.kind === "subTable") {
-        const [subField, fkField] = rel.ownerField.split(".") as [string, string];
-        const items = record[subField];
-        if (!globalThis.Array.isArray(items)) return [];
-        const fkValues = items
-          .map((item: unknown) => (item as Record<string, unknown>)[fkField])
-          .filter((v) => v != null);
-        if (fkValues.length === 0) return [];
-        const ph = fkValues.map(() => "?").join(", ");
-        const fetched = targetRepo.raw<Record<string, unknown>>(
-          `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" IN (${ph})`,
-          ...fkValues
-        );
-        const byKey = new Map(fetched.map((r) => [r[rel.targetField], r]));
-        return items.map((item: unknown) => ({
-          ...(item as Record<string, unknown>),
-          _resolved: byKey.get((item as Record<string, unknown>)[fkField]) ?? null,
-        }));
-      }
-
-      return undefined;
-    };
-  }
-
-  function materialize(
-    ownerTable: string,
-    record: Record<string, unknown>
-  ): Record<string, unknown> {
-    const tableRels = relations.filter((r) => r.ownerTable === ownerTable);
-    if (tableRels.length === 0) return record;
-
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(record)) {
-      result[k] = v;
-    }
-
-    // ── Scalar relations (lazy) ───────────────────────────────────────────────
-    const scalarRels = tableRels.filter((r) => r.kind === "scalar");
-    if (scalarRels.length > 0) {
-      const related = new Proxy(
-        {} as Record<string, unknown>,
-        {
-          get(_target, prop: string) {
-            const rel = scalarRels.find(
-              (r) => r.as === prop || r.ownerField === prop
-            );
-            if (!rel) return undefined;
-            const targetRepo = repos.get(rel.targetTable);
-            if (!targetRepo) return null;
-            const fkVal = record[rel.ownerField];
-            if (fkVal == null) return null;
-            const found = targetRepo.raw(
-              `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" = ? LIMIT 1`,
-              fkVal
-            )[0];
-            return found ?? null;
-          },
-        }
-      );
-      Object.defineProperty(result, "related", {
-        value: related,
-        writable: false,
-        enumerable: false,
-        configurable: false,
-      });
-
-      for (const rel of scalarRels) {
-        if (rel.as) {
-          Object.defineProperty(result, rel.as, {
-            get() {
-              return (result.related as Record<string, unknown>)[rel.as!];
-            },
-            enumerable: false,
-            configurable: false,
+          relations.push({
+            ownerTable,
+            ownerField: rel.ownerField,
+            targetTable: rel.targetTableName,
+            targetField: rel.targetField,
+            kind: parts.length === 1 ? "scalar" : "subTable",
+            as: undefined,
           });
         }
       }
     }
 
-    // ── Sub-table relations (batch per materialize call) ──────────────────────
-    const subTableRels = tableRels.filter((r) => r.kind === "subTable");
-    for (const rel of subTableRels) {
-      const [subField, fkField] = rel.ownerField.split(".") as [string, string];
-      const items = result[subField];
-      if (!globalThis.Array.isArray(items)) continue;
+    // ─── Build desired schema for diffing ───────────────────────────────────────
 
-      const targetRepo = repos.get(rel.targetTable);
-      if (!targetRepo) continue;
+    const desiredTables: DesiredTable[] = [];
+    for (const [name, config] of tableEntries) {
+      const meta = introspectTable(name, config.schema);
+      desiredTables.push({
+        name,
+        columns: meta.columns,
+        indexes: (config.indexes ?? []).map((idx) => ({
+          name: idx.name,
+          columns: idx.columns.map((c) => c.name),
+          unique: idx.unique,
+        })),
+        primaryKey: config.primaryKey.name,
+      });
+      for (const sub of meta.subTables) {
+        desiredTables.push({
+          name: sub.tableName,
+          columns: sub.columns,
+          indexes: (config.subTables?.[sub.fieldName]?.indexes ?? []).map((idx) => ({
+            name: idx.name,
+            columns: idx.columns.map((c) => c.name),
+            unique: idx.unique,
+          })),
+          primaryKey: "_id",
+        });
+      }
+    }
 
-      const fkValues = items
-        .map((item: unknown) => (item as Record<string, unknown>)[fkField])
-        .filter((v) => v != null);
+    // ─── Persist metadata ───────────────────────────────────────────────────────
 
-      let byKey = new Map<unknown, Record<string, unknown>>();
-      if (fkValues.length > 0) {
-        const ph = fkValues.map(() => "?").join(", ");
-        const fetched = targetRepo.raw<Record<string, unknown>>(
-          `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" IN (${ph})`,
-          ...fkValues
-        );
-        byKey = new Map(fetched.map((r) => [r[rel.targetField], r]));
+    const meta = new MetaStore(db);
+
+    const allSchemas = Object.fromEntries(
+      tableEntries.map(([name, config]) => [name, config.schema])
+    );
+    const schemaJson = JSON.stringify(allSchemas);
+    const schemaHash = Bun.hash(schemaJson);
+    const schemaBytes = new TextEncoder().encode(schemaJson);
+
+    const storedHash = meta.getString("_schema_hash");
+    const currentHash = String(schemaHash);
+    const schemaChanged = storedHash !== currentHash;
+
+    if (schemaChanged && opts.sync && opts.sync !== "ignore") {
+      const actualTables = inspectAllTables(db);
+      const diff = computeDiff(desiredTables, actualTables);
+      applySync(diff, db, opts.sync, desiredTables);
+    }
+
+    meta.setString("_schema_hash", currentHash);
+    meta.setCompressed("_schema_compressed", schemaBytes);
+    meta.setJSON("_tables", Object.keys(opts.tables));
+    meta.setJSON("_relations", relations);
+    meta.setString("_bunorm_version", "0.0.2");
+
+    // ─── Build and inject materializers ─────────────────────────────────────────
+
+    function materialize(
+      ownerTable: string,
+      record: Record<string, unknown>
+    ): Record<string, unknown> {
+      const tableRels = relations.filter((r) => r.ownerTable === ownerTable);
+      if (tableRels.length === 0) return record;
+
+      const result: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(record)) {
+        result[k] = v;
       }
 
-      result[subField] = items.map((item: unknown) => {
-        const resolved =
-          byKey.get((item as Record<string, unknown>)[fkField]) ?? null;
-        const wrapper = Object.create(null);
-        Object.assign(wrapper, item);
-
-        const itemRelated = new Proxy(
+      // ── Scalar relations (lazy) ───────────────────────────────────────────────
+      const scalarRels = tableRels.filter((r) => r.kind === "scalar");
+      if (scalarRels.length > 0) {
+        const related = new Proxy(
           {} as Record<string, unknown>,
           {
             get(_target, prop: string) {
-              if (prop === rel.as || prop === rel.ownerField) {
-                return resolved;
-              }
-              return undefined;
+              const rel = scalarRels.find(
+                (r) => r.as === prop || r.ownerField === prop
+              );
+              if (!rel) return undefined;
+              const targetRepo = repos.get(rel.targetTable);
+              if (!targetRepo) return null;
+              const fkVal = record[rel.ownerField];
+              if (fkVal == null) return null;
+              const found = targetRepo.raw(
+                `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" = ? LIMIT 1`,
+                fkVal
+              )[0];
+              return found ?? null;
             },
           }
         );
-        Object.defineProperty(wrapper, "related", {
-          value: itemRelated,
+        Object.defineProperty(result, "related", {
+          value: related,
           writable: false,
           enumerable: false,
           configurable: false,
         });
 
-        if (rel.as) {
-          Object.defineProperty(wrapper, rel.as, {
-            value: resolved,
-            writable: false,
-            enumerable: false,
-            configurable: false,
-          });
-        }
-
-        return wrapper;
-      });
-    }
-
-    return result;
-  }
-
-  function materializeMany(
-    ownerTable: string,
-    records: Record<string, unknown>[]
-  ): Array<Record<string, unknown>> {
-    if (records.length === 0) return [];
-
-    const tableRels = relations.filter((r) => r.ownerTable === ownerTable);
-    if (tableRels.length === 0) return records;
-
-    const results = records.map((r) => {
-      const proto = Object.getPrototypeOf(r);
-      const copy = proto
-        ? Object.create(proto)
-        : ({} as Record<string, unknown>);
-      Object.assign(copy, r);
-      return copy;
-    });
-
-    const scalarRels = tableRels.filter((r) => r.kind === "scalar");
-    const subTableRels = tableRels.filter((r) => r.kind === "subTable");
-
-    for (const rel of scalarRels) {
-      const targetRepo = repos.get(rel.targetTable);
-      if (!targetRepo) continue;
-      const col = rel.ownerField;
-      const fkValues = [
-        ...new Set(
-          results
-            .map((r) => r[col])
-            .filter((v) => v !== null && v !== undefined)
-        ),
-      ];
-      if (fkValues.length === 0) continue;
-      const ph = fkValues.map(() => "?").join(", ");
-      const fetched = targetRepo.raw<Record<string, unknown>>(
-        `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" IN (${ph})`,
-        ...fkValues
-      );
-      const byKey = new Map(fetched.map((r) => [r[rel.targetField], r]));
-      for (const rec of results) {
-        const val = byKey.get(rec[col]);
-        if (val) {
-          Object.defineProperty(rec, `_${col}_resolved`, {
-            value: val,
-            writable: false,
-            enumerable: false,
-            configurable: false,
-          });
+        for (const rel of scalarRels) {
+          if (rel.as) {
+            Object.defineProperty(result, rel.as, {
+              get() {
+                return (result.related as Record<string, unknown>)[rel.as!];
+              },
+              enumerable: false,
+              configurable: false,
+            });
+          }
         }
       }
-    }
 
-    for (const rel of subTableRels) {
-      const targetRepo = repos.get(rel.targetTable);
-      if (!targetRepo) continue;
-      const [subField, fkField] = rel.ownerField.split(".") as [string, string];
-      const allFkValues = [
-        ...new Set(
-          results.flatMap((r) => {
-            const items = r[subField];
-            if (!globalThis.Array.isArray(items)) return [];
-            return items
-              .map((i) => (i as Record<string, unknown>)[fkField])
-              .filter((v) => v !== null && v !== undefined);
-          })
-        ),
-      ];
-      if (allFkValues.length === 0) continue;
-      const ph = allFkValues.map(() => "?").join(", ");
-      const fetched = targetRepo.raw<Record<string, unknown>>(
-        `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" IN (${ph})`,
-        ...allFkValues
-      );
-      const byKey = new Map(fetched.map((r) => [r[rel.targetField], r]));
-
-      for (const rec of results) {
-        const items = rec[subField];
+      // ── Sub-table relations (batch per materialize call) ──────────────────────
+      const subTableRels = tableRels.filter((r) => r.kind === "subTable");
+      for (const rel of subTableRels) {
+        const [subField, fkField] = rel.ownerField.split(".") as [string, string];
+        const items = result[subField];
         if (!globalThis.Array.isArray(items)) continue;
-        rec[subField] = items.map((item) => {
+
+        const targetRepo = repos.get(rel.targetTable);
+        if (!targetRepo) continue;
+
+        const fkValues = items
+          .map((item: unknown) => (item as Record<string, unknown>)[fkField])
+          .filter((v) => v != null);
+
+        let byKey = new Map<unknown, Record<string, unknown>>();
+        if (fkValues.length > 0) {
+          const ph = fkValues.map(() => "?").join(", ");
+          const fetched = targetRepo.raw<Record<string, unknown>>(
+            `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" IN (${ph})`,
+            ...fkValues
+          );
+          byKey = new Map(fetched.map((r) => [r[rel.targetField], r]));
+        }
+
+        result[subField] = items.map((item: unknown) => {
           const resolved =
             byKey.get((item as Record<string, unknown>)[fkField]) ?? null;
           const wrapper = Object.create(null);
@@ -607,150 +438,269 @@ export function createORM<
           return wrapper;
         });
       }
+
+      return result;
     }
 
-    // Attach parent .related for scalar relations (pre-resolved)
-    if (scalarRels.length > 0) {
-      for (const rec of results) {
-        const related = new Proxy(
-          {} as Record<string, unknown>,
-          {
-            get(_target, prop: string) {
-              const rel = scalarRels.find(
-                (r) => r.as === prop || r.ownerField === prop
-              );
-              if (!rel) return undefined;
-              return (
-                (rec as Record<string, unknown>)[
-                  `_${rel.ownerField}_resolved`
-                ] ?? null
-              );
-            },
-          }
-        );
-        Object.defineProperty(rec, "related", {
-          value: related,
-          writable: false,
-          enumerable: false,
-          configurable: false,
-        });
+    function materializeMany(
+      ownerTable: string,
+      records: Record<string, unknown>[]
+    ): Array<Record<string, unknown>> {
+      if (records.length === 0) return [];
 
-        for (const rel of scalarRels) {
-          if (rel.as) {
-            Object.defineProperty(rec, rel.as, {
-              get() {
-                return (
-                  (rec as Record<string, unknown>)[
-                    `_${rel.ownerField}_resolved`
-                  ] ?? null
-                );
-              },
+      const tableRels = relations.filter((r) => r.ownerTable === ownerTable);
+      if (tableRels.length === 0) return records;
+
+      const results = records.map((r) => {
+        const proto = Object.getPrototypeOf(r);
+        const copy = proto
+          ? Object.create(proto)
+          : ({} as Record<string, unknown>);
+        Object.assign(copy, r);
+        return copy;
+      });
+
+      const scalarRels = tableRels.filter((r) => r.kind === "scalar");
+      const subTableRels = tableRels.filter((r) => r.kind === "subTable");
+
+      for (const rel of scalarRels) {
+        const targetRepo = repos.get(rel.targetTable);
+        if (!targetRepo) continue;
+        const col = rel.ownerField;
+        const fkValues = [
+          ...new Set(
+            results
+              .map((r) => r[col])
+              .filter((v) => v !== null && v !== undefined)
+          ),
+        ];
+        if (fkValues.length === 0) continue;
+        const ph = fkValues.map(() => "?").join(", ");
+        const fetched = targetRepo.raw<Record<string, unknown>>(
+          `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" IN (${ph})`,
+          ...fkValues
+        );
+        const byKey = new Map(fetched.map((r) => [r[rel.targetField], r]));
+        for (const rec of results) {
+          const val = byKey.get(rec[col]);
+          if (val) {
+            Object.defineProperty(rec, `_${col}_resolved`, {
+              value: val,
+              writable: false,
               enumerable: false,
               configurable: false,
             });
           }
         }
       }
+
+      for (const rel of subTableRels) {
+        const targetRepo = repos.get(rel.targetTable);
+        if (!targetRepo) continue;
+        const [subField, fkField] = rel.ownerField.split(".") as [string, string];
+        const allFkValues = [
+          ...new Set(
+            results.flatMap((r) => {
+              const items = r[subField];
+              if (!globalThis.Array.isArray(items)) return [];
+              return items
+                .map((i) => (i as Record<string, unknown>)[fkField])
+                .filter((v) => v !== null && v !== undefined);
+            })
+          ),
+        ];
+        if (allFkValues.length === 0) continue;
+        const ph = allFkValues.map(() => "?").join(", ");
+        const fetched = targetRepo.raw<Record<string, unknown>>(
+          `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" IN (${ph})`,
+          ...allFkValues
+        );
+        const byKey = new Map(fetched.map((r) => [r[rel.targetField], r]));
+
+        for (const rec of results) {
+          const items = rec[subField];
+          if (!globalThis.Array.isArray(items)) continue;
+          rec[subField] = items.map((item) => {
+            const resolved =
+              byKey.get((item as Record<string, unknown>)[fkField]) ?? null;
+            const wrapper = Object.create(null);
+            Object.assign(wrapper, item);
+
+            const itemRelated = new Proxy(
+              {} as Record<string, unknown>,
+              {
+                get(_target, prop: string) {
+                  if (prop === rel.as || prop === rel.ownerField) {
+                    return resolved;
+                  }
+                  return undefined;
+                },
+              }
+            );
+            Object.defineProperty(wrapper, "related", {
+              value: itemRelated,
+              writable: false,
+              enumerable: false,
+              configurable: false,
+            });
+
+            if (rel.as) {
+              Object.defineProperty(wrapper, rel.as, {
+                value: resolved,
+                writable: false,
+                enumerable: false,
+                configurable: false,
+              });
+            }
+
+            return wrapper;
+          });
+        }
+      }
+
+      // Attach parent .related for scalar relations (pre-resolved)
+      if (scalarRels.length > 0) {
+        for (const rec of results) {
+          const related = new Proxy(
+            {} as Record<string, unknown>,
+            {
+              get(_target, prop: string) {
+                const rel = scalarRels.find(
+                  (r) => r.as === prop || r.ownerField === prop
+                );
+                if (!rel) return undefined;
+                return (
+                  (rec as Record<string, unknown>)[
+                    `_${rel.ownerField}_resolved`
+                  ] ?? null
+                );
+              },
+            }
+          );
+          Object.defineProperty(rec, "related", {
+            value: related,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+          });
+
+          for (const rel of scalarRels) {
+            if (rel.as) {
+              Object.defineProperty(rec, rel.as, {
+                get() {
+                  return (
+                    (rec as Record<string, unknown>)[
+                      `_${rel.ownerField}_resolved`
+                    ] ?? null
+                  );
+                },
+                enumerable: false,
+                configurable: false,
+              });
+            }
+          }
+        }
+      }
+
+      return results;
     }
 
-    return results;
-  }
+    // ─── Metadata helpers ───────────────────────────────────────────────────────
 
-  // ─── Metadata helpers ───────────────────────────────────────────────────────
-
-  function flush(opts?: { includeMeta?: boolean }): void {
-    for (const repo of repos.values()) {
-      repo.flush();
-    }
-    if (opts?.includeMeta) {
-      for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
-        meta.delete(key);
+    function flush(opts?: { includeMeta?: boolean }): void {
+      for (const repo of repos.values()) {
+        repo.flush();
+      }
+      if (opts?.includeMeta) {
+        for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
+          meta.delete(key);
+        }
       }
     }
-  }
 
-  // ─── Typed meta accessors ───────────────────────────────────────────────────
+    // ─── Typed meta accessors ───────────────────────────────────────────────────
 
-  const metaAccessors: MetaAccessors = {
-    get schemaHash() {
-      return meta.getString("_schema_hash");
-    },
-    get schemaJSON() {
-      const compressed = meta.getCompressed("_schema_compressed");
-      return compressed ? new TextDecoder().decode(compressed) : null;
-    },
-    get tables() {
-      return meta.getJSON<string[]>("_tables");
-    },
-    get relations() {
-      return meta.getJSON<unknown[]>("_relations");
-    },
-    get version() {
-      return meta.getString("_bunorm_version");
-    },
-  };
-
-  // ─── Inject materializers into repositories ─────────────────────────────────
-
-  for (const [name, repo] of repos) {
-    const tableRels = relations.filter((r) => r.ownerTable === name);
-    if (tableRels.length === 0) continue;
-
-    repo.setMaterializer(
-      (record) => materialize(name, record),
-      (records) => materializeMany(name, records)
-    );
-  }
-
-  // ─── Build accessor object with getters ─────────────────────────────────────
-
-  accessors = {} as BunORM<T, Rels>;
-
-  for (const name of Object.keys(opts.tables)) {
-    Object.defineProperty(accessors, name, {
-      get() {
-        return repos.get(name)!;
+    const metaAccessors: MetaAccessors = {
+      get schemaHash() {
+        return meta.getString("_schema_hash");
       },
-      enumerable: true,
-      configurable: true,
-    });
-  }
+      get schemaJSON() {
+        const compressed = meta.getCompressed("_schema_compressed");
+        return compressed ? new TextDecoder().decode(compressed) : null;
+      },
+      get tables() {
+        return meta.getJSON<string[]>("_tables");
+      },
+      get relations() {
+        return meta.getJSON<unknown[]>("_relations");
+      },
+      get version() {
+        return meta.getString("_bunorm_version");
+      },
+    };
 
-  const migrateFn = async (): Promise<void> => {
-    if (!opts.migrations) {
-      raise("MIGRATIONS_NOT_CONFIGURED", "bunorm: migrations dir not configured. Pass `migrations: { dir: ... }` to createORM().");
+    // ─── Inject materializers into repositories ─────────────────────────────────
+
+    for (const [name, repo] of repos) {
+      const tableRels = relations.filter((r) => r.ownerTable === name);
+      if (tableRels.length === 0) continue;
+
+      repo.setMaterializer(
+        (record) => materialize(name, record),
+        (records) => materializeMany(name, records)
+      );
     }
-    await migrate({
-      path: dbPath,
-      migrationsDir: opts.migrations.dir,
-    });
-  };
 
-  const ormEvents = {
-    on(eventOrTable: string, opOrListener: any, maybeListener?: any): () => void {
-      if (typeof maybeListener === "function") {
-        const event = `${eventOrTable}.${opOrListener}`;
-        return events.on(event, maybeListener);
+    // ─── Build accessor object with getters ─────────────────────────────────────
+
+    accessors = {} as BunORM<T, Rels>;
+
+    for (const name of Object.keys(opts.tables)) {
+      Object.defineProperty(accessors, name, {
+        get() {
+          return repos.get(name)!;
+        },
+        enumerable: true,
+        configurable: true,
+      });
+    }
+
+    const migrateFn = async (): Promise<void> => {
+      if (!opts.migrations) {
+        raise("MIGRATIONS_NOT_CONFIGURED", "bunorm: migrations dir not configured. Pass `migrations: { dir: ... }` to createORM().");
       }
-      return events.on(eventOrTable, opOrListener);
-    },
-  };
+      await migrate({
+        path: dbPath,
+        migrationsDir: opts.migrations.dir,
+      });
+    };
 
-  // Build context
-  ctx = {
-    orm: accessors as BunORM<T, Rels>,
-    db,
-    meta,
-    tables: Object.keys(opts.tables),
-    repos,
-    logger: {
-      log: (...args: unknown[]) => { console.log("[bunorm]", ...args); },
-      error: (...args: unknown[]) => { console.error("[bunorm]", ...args); },
-    },
-  };
+    const ormEvents = {
+      on(eventOrTable: string, opOrListener: any, maybeListener?: any): () => void {
+        if (typeof maybeListener === "function") {
+          const event = `${eventOrTable}.${opOrListener}`;
+          return events.on(event, maybeListener);
+        }
+        return events.on(eventOrTable, opOrListener);
+      },
+    };
 
-  function close(): void {
-    lifecycle.runShutdown(ctx).then(() => {
+    // Build context
+    ctx = {
+      orm: accessors as BunORM<T, Rels>,
+      db,
+      meta,
+      tables: Object.keys(opts.tables),
+      repos,
+      logger: {
+        log: (...args: unknown[]) => { console.log("[bunorm]", ...args); },
+        error: (...args: unknown[]) => { console.error("[bunorm]", ...args); },
+      },
+    };
+
+    function close(): void {
+      lifecycle.runShutdown(ctx);
+
       // Flush / drop tables on exit
       if (opts.flushOnExit) {
         for (const name of opts.flushOnExit) {
@@ -770,87 +720,91 @@ export function createORM<
 
       db.close();
 
-      lifecycle.runExit(ctx).then(() => {
-        events.emit("exit", { phase: "exit", timestamp: Date.now() });
+      lifecycle.runExit(ctx);
+      events.emit("exit", { phase: "exit", timestamp: Date.now() });
 
-        const unlinkPolicy = opts.unlinkDbFilesOnExit;
-        if (unlinkPolicy === true || unlinkPolicy === "onlyGraceful") {
-          unlinkDbFiles(dbPath);
-        }
+      const unlinkPolicy = opts.unlinkDbFilesOnExit;
+      if (unlinkPolicy === true || unlinkPolicy === "onlyGraceful") {
+        unlinkDbFiles(dbPath);
+      }
+    }
+
+    // Crash-time unlink + exit hooks
+    if (opts.unlinkDbFilesOnExit === "any") {
+      const doUnlink = () => {
+        try { unlinkDbFiles(dbPath); } catch {}
+      };
+      const gracefulCrash = () => {
+        lifecycle.runExit(ctx);
+        doUnlink();
+        process.exit(1);
+      };
+      process.on("exit", doUnlink);
+      process.on("SIGINT", gracefulCrash);
+      process.on("SIGTERM", gracefulCrash);
+      process.on("uncaughtException", (err) => {
+        events.emit("fail", { phase: "fail", error: err, timestamp: Date.now() });
+        gracefulCrash();
       });
+    }
+
+    // Assign public API before lifecycle hooks so ctx.orm._meta etc. are available
+    Object.assign(accessors, {
+      _transaction: db.transaction.bind(db),
+      _close: close,
+      _meta: metaAccessors,
+      _materialize: materialize,
+      _materializeMany: materializeMany,
+      _flush: flush,
+      _migrate: migrateFn,
+      _events: ormEvents,
     });
-  }
 
-  // Crash-time unlink
-  if (opts.unlinkDbFilesOnExit === "any") {
-    const doUnlink = () => {
-      try { unlinkDbFiles(dbPath); } catch {}
-    };
-    process.on("exit", doUnlink);
-    process.on("SIGINT", () => { doUnlink(); process.exit(1); });
-    process.on("SIGTERM", () => { doUnlink(); process.exit(1); });
-    process.on("uncaughtException", (err) => {
-      events.emit("fail", { phase: "fail", error: err, timestamp: Date.now() });
-      doUnlink();
-      process.exit(1);
-    });
-  }
+    // Run startup sequence deterministically
+    lifecycle.runStart(ctx);
 
-  // Assign public API before lifecycle hooks so ctx.orm._meta etc. are available
-  Object.assign(accessors, {
-    _transaction: db.transaction.bind(db),
-    _close: close,
-    _meta: metaAccessors,
-    _materialize: materialize,
-    _materializeMany: materializeMany,
-    _flush: flush,
-    _migrate: migrateFn,
-    _events: ormEvents,
-  });
-
-  // Run startup hooks
-  lifecycle.runStart(ctx);
-
-  // Flush / drop tables on start
-  if (opts.flushOnStart) {
-    for (const name of opts.flushOnStart) {
-      repos.get(name)?.flush();
+    // Flush / drop tables on start
+    if (opts.flushOnStart) {
+      for (const name of opts.flushOnStart) {
+        repos.get(name)?.flush();
+      }
     }
-  }
-  if (opts.dropOnStart) {
-    for (const name of opts.dropOnStart) {
-      repos.get(name)?.drop();
+    if (opts.dropOnStart) {
+      for (const name of opts.dropOnStart) {
+        repos.get(name)?.drop();
+      }
     }
-  }
-  if (opts.flushMetaOnStart) {
-    for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
-      meta.delete(key);
+    if (opts.flushMetaOnStart) {
+      for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
+        meta.delete(key);
+      }
     }
-  }
 
-  // Auto-migrate
-  if (opts.autoMigrate && opts.migrations) {
-    migrate({ path: dbPath, migrationsDir: opts.migrations.dir });
-  }
+    // Auto-migrate (fire-and-forget; errors are logged)
+    if (opts.autoMigrate && opts.migrations) {
+      migrate({ path: dbPath, migrationsDir: opts.migrations.dir }).catch((err: unknown) => {
+        console.error("[bunorm] autoMigrate failed:", err);
+      });
+    }
 
-  // Seed
-  if (opts.seed) {
-    opts.seed(accessors as BunORM<T, Rels>);
-  }
+    // Seed
+    if (opts.seed) {
+      opts.seed(accessors as BunORM<T, Rels>);
+    }
 
-  // Ready
-  lifecycle.runReady(ctx);
-  events.emit("ready", { phase: "ready", timestamp: Date.now() });
+    // Ready
+    lifecycle.runReady(ctx);
+    events.emit("ready", { phase: "ready", timestamp: Date.now() });
 
   } catch (err) {
+    // Initialization errors are ALWAYS thrown — a broken ORM is unusable
     if (err instanceof ORMError) {
       events.emit("fail", { phase: "fail", error: err, timestamp: Date.now() });
-      handleError(err, errorPolicy, events.emit.bind(events));
     } else {
       const wrapped = new ORMError(String(err), { code: "UNEXPECTED", trace: currentTrace() });
       events.emit("fail", { phase: "fail", error: wrapped, timestamp: Date.now() });
-      handleError(wrapped, errorPolicy, events.emit.bind(events));
     }
+    throw err;
   }
 
   return accessors;

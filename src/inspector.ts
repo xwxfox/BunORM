@@ -39,7 +39,7 @@ function listUserTables(db: BunDatabase): string[] {
 
 function listIndexesForTable(db: BunDatabase, tableName: string): Array<{ name: string; unique: number }> {
   const stmt = db.prepare(
-    `SELECT name, "unique" AS "unique" FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name NOT LIKE 'sqlite_%'`
+    `SELECT name, "unique" AS "unique" FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'sqlite_autoindex_%'`
   );
   const rows = stmt.all(tableName) as Array<{ name: string; unique: number }>;
   return rows;

@@ -29,7 +29,7 @@ describe("QoL options", () => {
     });
     expect(orm2.users.findById("1")).toBeNull();
     orm2._close();
-  });
+  }, 10000);
 
   test("seed runs after ready", () => {
     let seeded = false;

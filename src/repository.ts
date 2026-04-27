@@ -313,18 +313,23 @@ export class Repository<
 
   findById(id: Infer<T>[PK]): Entity<Infer<T>, Mat, TS> | null {
     return withTrace("repository.findById", { table: this.tableName }, () => {
-      const pk = this.descriptor.primaryKey.name;
-      const stmt = this.db.prepare(
-        `SELECT * FROM "${this.tableName}" WHERE "${pk}" = ? LIMIT 1`
-      );
-      const row = stmt.get(id as string | number | bigint | null) as
-        | Record<string, unknown>
-        | undefined;
-      if (!row) return null;
-      const result = this._wrap(this._hydrateOne(row)) as Entity<Infer<T>, Mat, TS>;
+      const result = this._findByIdRaw(id);
       this._emit("findById", { id, result });
       return result;
     });
+  }
+
+  /** Internal findById without event emission — used by update() */
+  private _findByIdRaw(id: Infer<T>[PK]): Entity<Infer<T>, Mat, TS> | null {
+    const pk = this.descriptor.primaryKey.name;
+    const stmt = this.db.prepare(
+      `SELECT * FROM "${this.tableName}" WHERE "${pk}" = ? LIMIT 1`
+    );
+    const row = stmt.get(id as string | number | bigint | null) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return null;
+    return this._wrap(this._hydrateOne(row)) as Entity<Infer<T>, Mat, TS>;
   }
 
   // ─── Find many ─────────────────────────────────────────────────────────────
@@ -370,9 +375,12 @@ export class Repository<
 
   findOne(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS> | null {
     return withTrace("repository.findOne", { table: this.tableName }, () => {
-      const rows = this.findMany({ ...opts, limit: 1 });
-      this._emit("findOne", { options: opts, result: rows[0] ?? null });
-      return rows[0] ?? null;
+      const { sql, params } = buildSelect(this.tableName, { ...opts, limit: 1 });
+      const stmt = this.db.prepare(sql);
+      const row = stmt.get(...(params as SQLQueryBindings[])) as Record<string, unknown> | undefined;
+      const result = row ? this._wrap(this._hydrateOne(row, opts.include)) as Entity<Infer<T>, Mat, TS> : null;
+      this._emit("findOne", { options: opts, result });
+      return result;
     });
   }
 
@@ -420,8 +428,8 @@ export class Repository<
         });
       }
 
-      // Fetch existing, merge, validate
-      const existing = this.findById(pkVal as Infer<T>[PK]);
+      // Fetch existing, merge, validate — use raw find to avoid spurious read events
+      const existing = this._findByIdRaw(pkVal as Infer<T>[PK]);
       if (!existing) return null;
 
       const merged = this.parse({ ...(existing as object), ...obj });
@@ -484,10 +492,23 @@ export class Repository<
 
   deleteWhere(where: WhereClause<T>): number {
     return withTrace("repository.deleteWhere", { table: this.tableName }, () => {
-      const { sql, params } = buildDelete(this.tableName, where);
-      const result = this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
-      this._emit("deleteWhere", { where, result: result.changes });
-      return result.changes;
+      const { sql: whereSql, params } = buildWhere(where);
+      const pk = this.descriptor.primaryKey.name;
+
+      const changes = this.db.transaction(() => {
+        // Cascade to sub-tables first
+        for (const sub of this.meta.subTables) {
+          const delSubSql = `DELETE FROM "${sub.tableName}" WHERE "_owner_id" IN (SELECT "${pk}" FROM "${this.tableName}" ${whereSql})`.trim();
+          this.db.prepare(delSubSql).run(...(params as SQLQueryBindings[]));
+        }
+
+        const delSql = `DELETE FROM "${this.tableName}" ${whereSql}`.trim();
+        const result = this.db.prepare(delSql).run(...(params as SQLQueryBindings[]));
+        return result.changes;
+      });
+
+      this._emit("deleteWhere", { where, result: changes });
+      return changes;
     });
   }
 

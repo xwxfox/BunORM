@@ -22,6 +22,16 @@ function normalizeType(t: string): string {
   return t.toUpperCase().trim();
 }
 
+/** SQLite type affinity — treats VARCHAR, CHAR, CLOB as TEXT, etc. */
+function affinityType(t: string): string {
+  const upper = normalizeType(t);
+  if (upper.includes("INT")) return "INTEGER";
+  if (upper.includes("CHAR") || upper.includes("CLOB") || upper.includes("TEXT")) return "TEXT";
+  if (upper.includes("BLOB")) return "BLOB";
+  if (upper.includes("REAL") || upper.includes("FLOA") || upper.includes("DOUB")) return "REAL";
+  return "NUMERIC";
+}
+
 function isInternalColumn(name: string): boolean {
   return name === "_id" || name === "_owner_id" || name === "_index";
 }
@@ -39,9 +49,12 @@ function findIndex(actual: InspectorTable, columns: string[], unique: boolean): 
   });
 }
 
-function getActualPkColumn(actual: InspectorTable): string | undefined {
-  const col = actual.columns.find((c) => c.pk === 1);
-  return col?.name;
+/** Extract composite PK columns ordered by their position in the PK */
+function getActualPkColumns(actual: InspectorTable): string[] {
+  return actual.columns
+    .filter((c) => c.pk > 0)
+    .sort((a, b) => a.pk - b.pk)
+    .map((c) => c.name);
 }
 
 // ─── Diff logic ───────────────────────────────────────────────────────────────
@@ -92,8 +105,8 @@ export function computeDiff(desired: DesiredTable[], actual: InspectorTable[]): 
         continue;
       }
 
-      // Type mismatch
-      if (normalizeType(dc.sqlType) !== normalizeType(ac.type)) {
+      // Type mismatch (using SQLite affinity for comparison)
+      if (affinityType(dc.sqlType) !== affinityType(ac.type)) {
         unsafe.push({ kind: "change-type", table: dt.name, column: dc.name, from: ac.type, to: dc.sqlType });
       }
 
@@ -119,14 +132,15 @@ export function computeDiff(desired: DesiredTable[], actual: InspectorTable[]): 
       }
     }
 
-    // PK mismatch
-    const actualPk = getActualPkColumn(at);
-    if (actualPk !== dt.primaryKey) {
+    // PK mismatch (supports composite PKs)
+    const actualPkCols = getActualPkColumns(at);
+    const desiredPkCols = dt.primaryKey.split(",").map((c) => c.trim());
+    if (actualPkCols.length !== desiredPkCols.length || !actualPkCols.every((c, i) => c === desiredPkCols[i])) {
       unsafe.push({ kind: "change-pk", table: dt.name });
     }
 
-    // Compare indexes (ignore SQLite internal indexes)
-    const actualUserIndexes = at.indexes.filter((idx) => !idx.name.startsWith("sqlite_"));
+    // Compare indexes (ignore SQLite internal / auto indexes)
+    const actualUserIndexes = at.indexes.filter((idx) => !idx.name.startsWith("sqlite_") && !idx.name.startsWith("idx_sqlite_"));
     for (const di of dt.indexes) {
       if (!findIndex(at, di.columns, di.unique ?? false)) {
         safe.push({ kind: "add-index", table: dt.name, index: {
@@ -134,6 +148,18 @@ export function computeDiff(desired: DesiredTable[], actual: InspectorTable[]): 
           unique: di.unique ? 1 : 0,
           columns: di.columns,
         }});
+      }
+    }
+
+    // Indexes in actual but not desired
+    for (const ai of actualUserIndexes) {
+      const stillNeeded = dt.indexes.some((di) => {
+        const sortedDesired = [...di.columns].sort().join(",");
+        const sortedActual = [...ai.columns].sort().join(",");
+        return sortedDesired === sortedActual && Boolean(di.unique) === Boolean(ai.unique);
+      });
+      if (!stillNeeded) {
+        unsafe.push({ kind: "drop-index", table: dt.name, index: { name: ai.name, unique: ai.unique, columns: ai.columns } });
       }
     }
   }

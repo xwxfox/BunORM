@@ -120,6 +120,10 @@ function applySafeChanges(diff: SchemaDiff, db: BunDatabase, desired: DesiredTab
         rebuildTable(db, dt);
         break;
       }
+      case "drop-index": {
+        db.exec(`DROP INDEX IF EXISTS "${change.index.name}"`);
+        break;
+      }
     }
   }
 }
