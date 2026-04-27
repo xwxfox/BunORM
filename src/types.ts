@@ -414,9 +414,11 @@ export type TableOperation =
 
 export type BroadOperation = "read" | "write" | "delete";
 
+export type TableEventOperation = TableOperation | BroadOperation;
+
 export interface TableEventPayload<
   T = unknown,
-  Op extends TableOperation = TableOperation
+  Op extends TableEventOperation = TableEventOperation
 > {
   table: string;
   operation: Op;

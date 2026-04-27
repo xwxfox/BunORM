@@ -4,7 +4,51 @@
  * unless at least one listener is registered for the event key.
  */
 
+import type { TableConfig, TableOperation, BroadOperation, TableEventOperation, TableEventPayload, Infer } from "./types.ts";
+
 type Listener = (payload: unknown) => void;
+
+// ─── Typed event map ──────────────────────────────────────────────────────────
+
+export type EventMap<
+  Tables extends Record<string, TableConfig<any, any, any>>
+> = {
+  [K in keyof Tables & string as `${K}.${TableOperation}`]: TableEventPayload<
+    Tables[K] extends TableConfig<infer S> ? Infer<S> : never,
+    TableOperation
+  >;
+} & {
+  [K in keyof Tables & string as `${K}.${BroadOperation}`]: TableEventPayload<
+    Tables[K] extends TableConfig<infer S> ? Infer<S> : never,
+    BroadOperation
+  >;
+} & {
+  start: { phase: "start"; timestamp: number };
+  ready: { phase: "ready"; timestamp: number };
+  shutdown: { phase: "shutdown"; timestamp: number };
+  exit: { phase: "exit"; timestamp: number };
+  fail: { phase: "fail"; error: Error; timestamp: number };
+};
+
+export interface ORMEvents<
+  Tables extends Record<string, TableConfig<any, any, any>>
+> {
+  /** Global lifecycle event */
+  on<K extends keyof EventMap<Tables> & string>(
+    event: K,
+    listener: (payload: EventMap<Tables>[K]) => void
+  ): () => void;
+
+  /** Table-scoped operation event */
+  on<Table extends keyof Tables & string, Op extends TableOperation | BroadOperation>(
+    table: Table,
+    operation: Op,
+    listener: (payload: TableEventPayload<
+      Tables[Table] extends TableConfig<infer S> ? Infer<S> : never,
+      Op extends TableOperation ? Op : BroadOperation
+    >) => void
+  ): () => void;
+}
 
 export class EventBus {
   private readonly listeners = new Map<string, Set<Listener>>();

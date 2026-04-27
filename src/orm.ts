@@ -25,7 +25,7 @@ import { computeDiff, type DesiredTable } from "./diff.ts";
 import { applySync } from "./sync.ts";
 import { migrate } from "./migrate.ts";
 import type { SyncPolicy, ErrorPolicy, UnlinkPolicy } from "./types.ts";
-import { EventBus } from "./events.ts";
+import { EventBus, type ORMEvents } from "./events.ts";
 import { LifecycleManager } from "./lifecycle.ts";
 import type { ORMContext, LifecycleHook } from "./lifecycle.ts";
 import { handleError, ORMError, raise, currentTrace } from "./errors.ts";
@@ -100,10 +100,7 @@ export type BunORM<
   ): Array<Record<string, unknown>>;
   _flush(opts?: { includeMeta?: boolean }): void;
   _migrate(): Promise<void>;
-  _events: {
-    on(event: string, listener: (payload: unknown) => void): () => void;
-    on(table: string, operation: string, listener: (payload: unknown) => void): () => void;
-  };
+  _events: ORMEvents<Tables>;
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -719,53 +716,6 @@ export function createORM<
     });
   }
 
-  // Build context
-  ctx = {
-    orm: accessors as BunORM<T, Rels>,
-    db,
-    meta,
-    tables: Object.keys(opts.tables),
-    repos,
-    logger: {
-      log: (...args: unknown[]) => { console.log("[bunorm]", ...args); },
-      error: (...args: unknown[]) => { console.error("[bunorm]", ...args); },
-    },
-  };
-
-  // Run startup hooks
-  lifecycle.runStart(ctx);
-
-  // Flush / drop tables on start
-  if (opts.flushOnStart) {
-    for (const name of opts.flushOnStart) {
-      repos.get(name)?.flush();
-    }
-  }
-  if (opts.dropOnStart) {
-    for (const name of opts.dropOnStart) {
-      repos.get(name)?.drop();
-    }
-  }
-  if (opts.flushMetaOnStart) {
-    for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
-      meta.delete(key);
-    }
-  }
-
-  // Auto-migrate
-  if (opts.autoMigrate && opts.migrations) {
-    migrate({ path: dbPath, migrationsDir: opts.migrations.dir });
-  }
-
-  // Seed
-  if (opts.seed) {
-    opts.seed(accessors as BunORM<T, Rels>);
-  }
-
-  // Ready
-  lifecycle.runReady(ctx);
-  events.emit("ready", { phase: "ready", timestamp: Date.now() });
-
   const migrateFn = async (): Promise<void> => {
     if (!opts.migrations) {
       raise("MIGRATIONS_NOT_CONFIGURED", "bunorm: migrations dir not configured. Pass `migrations: { dir: ... }` to createORM().");
@@ -783,6 +733,19 @@ export function createORM<
         return events.on(event, maybeListener);
       }
       return events.on(eventOrTable, opOrListener);
+    },
+  };
+
+  // Build context
+  ctx = {
+    orm: accessors as BunORM<T, Rels>,
+    db,
+    meta,
+    tables: Object.keys(opts.tables),
+    repos,
+    logger: {
+      log: (...args: unknown[]) => { console.log("[bunorm]", ...args); },
+      error: (...args: unknown[]) => { console.error("[bunorm]", ...args); },
     },
   };
 
@@ -833,6 +796,7 @@ export function createORM<
     });
   }
 
+  // Assign public API before lifecycle hooks so ctx.orm._meta etc. are available
   Object.assign(accessors, {
     _transaction: db.transaction.bind(db),
     _close: close,
@@ -843,6 +807,40 @@ export function createORM<
     _migrate: migrateFn,
     _events: ormEvents,
   });
+
+  // Run startup hooks
+  lifecycle.runStart(ctx);
+
+  // Flush / drop tables on start
+  if (opts.flushOnStart) {
+    for (const name of opts.flushOnStart) {
+      repos.get(name)?.flush();
+    }
+  }
+  if (opts.dropOnStart) {
+    for (const name of opts.dropOnStart) {
+      repos.get(name)?.drop();
+    }
+  }
+  if (opts.flushMetaOnStart) {
+    for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
+      meta.delete(key);
+    }
+  }
+
+  // Auto-migrate
+  if (opts.autoMigrate && opts.migrations) {
+    migrate({ path: dbPath, migrationsDir: opts.migrations.dir });
+  }
+
+  // Seed
+  if (opts.seed) {
+    opts.seed(accessors as BunORM<T, Rels>);
+  }
+
+  // Ready
+  lifecycle.runReady(ctx);
+  events.emit("ready", { phase: "ready", timestamp: Date.now() });
 
   } catch (err) {
     if (err instanceof ORMError) {

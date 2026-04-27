@@ -1,37 +1,33 @@
 /**
- * bunorm — usage example
- * Demonstrates: sales + inventory with sub-tables, typed column refs,
- * relations builder, lazy materialization, batch materialization,
- * typed filters, pagination, upsert, and clean serialization.
+ * bunorm — comprehensive usage example
+ *
+ * Demonstrates:
+ *   • Typed schemas, column refs, indexes, sub-tables
+ *   • Relations (scalar + sub-table) with lazy & batch materialization
+ *   • The event system — fine-grained and broad table events
+ *   • Lifecycle hooks (start / ready / shutdown / exit)
+ *   • Seed, rebuildOnLaunch, flushOnStart, unlinkDbFilesOnExit
+ *   • Error tracing with ORMError + configurable errorPolicy
+ *   • Transactions, upserts, pagination, and clean serialization
  */
 
 import {
-  Object, String, Number, Integer, Boolean, Array, Optional, Literal,
+  Object, String, Number, Integer, Boolean, Array, Optional,
   type Static,
 } from "typebox";
 import { createORM, table } from "./src/index.ts";
 
-// ─── 1. Define schemas ────────────────────────────────────────────────────────
+// ─── 1. Schemas ───────────────────────────────────────────────────────────────
 
-const InventoryItemSchema = Object({
+const InventorySchema = Object({
   sku: String(),
   name: String(),
-  description: Optional(String()),
   price: Number(),
   stock: Integer(),
   category: String(),
   active: Boolean(),
 });
-
-type InventoryItem = Static<typeof InventoryItemSchema>;
-
-const __eventschema = Object({
-  id: String(),
-  name: String(),
-  status: String(),
-});
-
-// ---
+type Inventory = Static<typeof InventorySchema>;
 
 const LineItemSchema = Object({
   itemNumber: String(),
@@ -48,83 +44,126 @@ const SaleSchema = Object({
   createdAt: Integer(),
   lineItems: Array(LineItemSchema),
 });
-
 type Sale = Static<typeof SaleSchema>;
 
-// ─── 2. Create ORM with typed column refs ─────────────────────────────────────
+const LogSchema = Object({
+  id: String(),
+  message: String(),
+  level: String(),
+});
+
+// ─── 2. Create ORM with ALL the new bells & whistles ──────────────────────────
 
 const orm = createORM({
   path: "shop.db",
+
+  // Schema
   tables: {
-    inventory: table(InventoryItemSchema, (s) => ({
+    inventory: table(InventorySchema, (s) => ({
       primaryKey: s.sku,
       indexes: [
         { columns: [s.category] },
         { columns: [s.active] },
-        { columns: [s.category, s.active], name: "idx_inventory_cat_active" },
       ],
     })),
     sales: table(SaleSchema, (s) => ({
       primaryKey: s.id,
+      timestamps: true,
       indexes: [
         { columns: [s.customerId] },
         { columns: [s.status] },
-        { columns: [s.createdAt] },
-        { columns: [s.customerId, s.status] },
       ],
     })),
+    logs: table(LogSchema, (s) => ({
+      primaryKey: s.id,
+    })),
   },
+
   relations: (r) => [
     r.from("sales")
       .subTable("lineItems", "itemNumber")
       .to("inventory", "sku", { as: "inventory" }),
   ],
-});
 
-// ─── 3. Seed inventory ────────────────────────────────────────────────────────
+  // ─── Lifecycle & QoL ────────────────────────────────────────────────────────
 
-orm._transaction(() => {
-  orm.inventory.upsert({
-    data: {
+  /** Wipe everything on every run so the demo is repeatable */
+  rebuildOnLaunch: true,
+
+  /** Flush only the logs table before we start (demo of per-table start flush) */
+  flushOnStart: ["logs"],
+
+  /** Seed function runs after sync but before ready */
+  seed: (o) => {
+    console.log("[seed] Seeding initial inventory...");
+    o.inventory.insert({
       sku: "WIDGET-A",
       name: "Widget Alpha",
-      description: "A fine widget",
       price: 9.99,
       stock: 100,
       category: "widgets",
       active: true,
-    },
-    conflictTarget: "sku"
-  });
-
-  orm.inventory.upsert({
-    data: {
+    });
+    o.inventory.insert({
       sku: "GADGET-B",
       name: "Gadget Beta",
       price: 24.99,
       stock: 50,
       category: "gadgets",
       active: true,
-    },
-    conflictTarget: "sku"
-  });
+    });
+  },
 
-  orm.inventory.upsert({
-    data: {
-      sku: "GIZMO-C",
-      name: "Gizmo Gamma",
-      price: 4.99,
-      stock: 200,
-      category: "gizmos",
-      active: false,
-    },
-    conflictTarget: "sku"
-  });
+  /** Startup hook — runs before validation / sync */
+  onStart: (ctx) => {
+    console.log("[lifecycle:onStart] Tables:", ctx.tables.join(", "));
+  },
+
+  /** Ready hook — DB is fully usable */
+  onReady: (ctx) => {
+    console.log("[lifecycle:onReady] Schema hash:", ctx.orm._meta.schemaHash?.slice(0, 8));
+  },
+
+  /** Shutdown hook — before DB closes */
+  onShutdown: (ctx) => {
+    console.log("[lifecycle:onShutdown] Persisting final state...");
+    ctx.orm.logs.insert({ id: "shutdown", message: "ORM shutting down", level: "info" });
+  },
+
+  /** Exit hook — after DB is closed */
+  onExit: (_ctx) => {
+    console.log("[lifecycle:onExit] Goodbye!");
+  },
+
+  /** Clean up DB files on graceful close */
+  unlinkDbFilesOnExit: true,
 });
 
-// ─── 4. Insert sales with sub-table line items ────────────────────────────────
+// ─── 3. Event System Demo ─────────────────────────────────────────────────────
 
-const sale1 = orm.sales.insert({
+console.log("\n─── Event System ───");
+
+// Fine-grained: listen to every insert on inventory
+const offInsert = orm._events.on("inventory", "insert", (e) => {
+  console.log(`[event:inventory.insert] table=${e.table} op=${e.operation}`);
+});
+
+// Broad: listen to ALL writes (insert, update, upsert) on sales
+const offWrite = orm._events.on("sales", "write", (e) => {
+  console.log(`[event:sales.write] operation=${e.operation}`);
+});
+
+// Broad: listen to ALL reads on inventory
+const offRead = orm._events.on("inventory", "read", (e) => {
+  console.log(`[event:inventory.read] operation=${e.operation}`);
+});
+
+// ─── 4. CRUD + Sub-tables ─────────────────────────────────────────────────────
+
+console.log("\n─── CRUD ───");
+
+// Insert a sale with sub-table line items
+const sale = orm.sales.insert({
   id: "SALE-001",
   customerId: "CUST-42",
   status: "paid",
@@ -135,148 +174,91 @@ const sale1 = orm.sales.insert({
     { itemNumber: "GADGET-B", quantity: 1, unitPrice: 24.99, discount: 5 },
   ],
 });
+console.log("Inserted sale:", sale.id, "| createdAt:", sale.createdAt);
 
-const sale2 = orm.sales.insert({
-  id: "SALE-002",
-  customerId: "CUST-99",
-  status: "pending",
-  total: 9.99,
-  createdAt: Date.now(),
-  lineItems: [
-    { itemNumber: "GIZMO-C", quantity: 2, unitPrice: 4.99 },
-  ],
-});
-
-console.log("Inserted sales:", sale1.id, sale2.id);
-
-// ─── 5. Typed queries ─────────────────────────────────────────────────────────
-
-// Find by PK — sub-table lineItems hydrated automatically
+// Find by PK — sub-table hydrated automatically
 const fetched = orm.sales.findById("SALE-001");
-console.log("\nFetched SALE-001:", fetched?.status);
-console.log("Line items:", fetched?.lineItems.length, "items");
-console.log("Schema hash present:", orm._meta.schemaHash !== null);
+console.log("Fetched line items:", fetched?.lineItems.length);
 
-// Typed WHERE filter
-const paidSales = orm.sales.findMany({
+// Typed WHERE + orderBy + pagination
+const paid = orm.sales.findMany({
   where: { status: { eq: "paid" } },
   orderBy: { column: "createdAt", direction: "DESC" },
 });
-console.log("\nPaid sales:", paidSales.length);
+console.log("Paid sales:", paid.length);
 
-// Paginated + count
+// Paginated find
 const page = orm.sales.findPage({
   where: { customerId: { eq: "CUST-42" } },
   limit: 10,
   offset: 0,
 });
-console.log(`\nPage: ${page.data.length} of ${page.total} total`);
+console.log(`Page: ${page.data.length} of ${page.total}`);
 
-// Count
-const pendingCount = orm.sales.count({ status: { eq: "pending" } });
-console.log("Pending sales:", pendingCount);
-
-// ─── 6. Update ────────────────────────────────────────────────────────────────
-
-const updated = orm.sales.update({
-  id: "SALE-002",
-  status: "paid",
-  total: 14.99,
-  lineItems: [
-    { itemNumber: "GIZMO-C", quantity: 3, unitPrice: 4.99 },
-  ],
-});
-console.log("\nUpdated SALE-002 status:", updated?.status);
-
-// ─── 7. Upsert inventory ──────────────────────────────────────────────────────
-
+// Upsert
 orm.inventory.upsert({
-  data: {
-    sku: "WIDGET-A",
-    name: "Widget Alpha v2",
-    price: 11.99,
-    stock: 95,
-    category: "widgets",
-    active: true,
-  },
+  data: { sku: "WIDGET-A", name: "Widget Alpha v2", price: 11.99, stock: 95, category: "widgets", active: true },
   conflictTarget: "sku",
   update: ["name", "price", "stock"],
 });
+console.log("Upserted price:", orm.inventory.findById("WIDGET-A")?.price);
 
-const updatedWidget = orm.inventory.findById("WIDGET-A");
-console.log("\nUpserted widget price:", updatedWidget?.price);
+// ─── 5. Materialization ───────────────────────────────────────────────────────
 
-// ─── 8. Materialization — resolve cross-table FKs ─────────────────────────────
+console.log("\n─── Materialization ───");
 
 const saleForMat = orm.sales.findById("SALE-001")!;
-const materialized = saleForMat.materialize();
-
-console.log("\nMaterialized SALE-001 line items with resolved inventory:");
-for (const li of materialized.lineItems) {
-  console.log(
-    ` - ${li.itemNumber} x${li.quantity} → resolved: ${li.inventory?.name ?? "NOT FOUND"}`
-  );
+const mat = saleForMat.materialize();
+for (const li of mat.lineItems) {
+  console.log(` - ${li.itemNumber} → resolved: ${li.inventory?.name ?? "NOT FOUND"}`);
 }
 
 // Batch materialize (N+1 safe)
-const allSales = orm.sales.findManyMaterialized();
-console.log("\nBatch materialized", allSales.length, "sales");
+const all = orm.sales.findManyMaterialized();
+console.log("Batch materialized", all.length, "sales");
 
-// ─── 9. Serialization stays clean ─────────────────────────────────────────────
+// ─── 6. Serialization stays clean ─────────────────────────────────────────────
 
-console.log("\nJSON.stringify(saleForMat):");
-console.log(JSON.stringify(saleForMat, null, 2));
+console.log("\n─── Serialization ───");
+console.log("JSON has no .materialize or .related keys:");
+console.log(JSON.stringify(saleForMat, null, 2).slice(0, 200) + "...");
 
-console.log("\nJSON.stringify(saleForMat.materialize()):");
-console.log(JSON.stringify(saleForMat.materialize(), null, 2));
+// ─── 7. Transactions ──────────────────────────────────────────────────────────
 
-// ─── 10. Multi-column index + range filter ───────────────────────────────────
-
-const activeWidgets = orm.inventory.findMany({
-  where: {
-    category: { eq: "widgets" },
-    active: { eq: true },
-    price: { lte: 20 },
-  },
-  orderBy: { column: "price", direction: "ASC" },
+console.log("\n─── Transaction ───");
+orm._transaction(() => {
+  orm.inventory.insert({ sku: "TX-1", name: "TxItem", price: 1, stock: 1, category: "tx", active: true });
+  orm.sales.insert({
+    id: "SALE-002", customerId: "TX", status: "pending", total: 1, createdAt: Date.now(), lineItems: [],
+  });
 });
-console.log("\nActive cheap widgets:", activeWidgets.length);
+console.log("Transaction committed — sales count:", orm.sales.count());
 
-// ─── 11. Delete ───────────────────────────────────────────────────────────────
+// ─── 8. Meta Access ───────────────────────────────────────────────────────────
 
-const deleted = orm.sales.deleteById("SALE-002");
-console.log("\nDeleted SALE-002:", deleted);
-console.log("Remaining sales:", orm.sales.count());
+console.log("\n─── Meta ───");
+console.log("Schema hash:", orm._meta.schemaHash?.slice(0, 16) + "...");
+console.log("Tables:", orm._meta.tables?.join(", "));
+console.log("Version:", orm._meta.version);
 
-// ─── 12. Cleanup ──────────────────────────────────────────────────────────────
+// ─── 9. Flush ─────────────────────────────────────────────────────────────────
+
+console.log("\n─── Flush ───");
+console.log("Logs before flush:", orm.logs.count());
+orm.logs.insert({ id: "L1", message: "hello", level: "debug" });
+console.log("Logs after insert:", orm.logs.count());
+orm._flush(); // flushes ALL tables
+console.log("Logs after orm._flush():", orm.logs.count());
+
+// ─── 10. Remove event listeners ───────────────────────────────────────────────
+
+offInsert();
+offWrite();
+offRead();
+console.log("\nEvent listeners removed.");
+
+// ─── 11. Cleanup ──────────────────────────────────────────────────────────────
+
+console.log("\n─── Closing ───");
 orm._close();
-console.log("\nDone — db closed cleanly.");
-
-// ─── 13. Timestamps demo ──────────────────────────────────────────────────────
-
-const tsORM = createORM({
-  path: "shop_timestamps.db",
-  tables: {
-    __events: table(__eventschema, (s) => ({
-      primaryKey: s.id,
-      timestamps: true,
-    })),
-  },
-  sync: (diff, db) => {
-    console.log("Schema differs!")
-    console.dir(diff)
-  }
-});
-
-const event = tsORM.__events.insert({ id: "E1", name: "Launch", status: "active" });
-console.log("\nEvent createdAt:", event.createdAt);
-console.log("Event updatedAt:", event.updatedAt);
-
-// ─── 14. Flush demo ───────────────────────────────────────────────────────────
-
-tsORM.__events.insert({ id: "E2", name: "Cleanup", status: "done" });
-console.log("__events before flush:", tsORM.__events.count());
-tsORM.__events.flush();
-console.log("__events after flush:", tsORM.__events.count());
-
-tsORM._close();
+console.log("Done — DB files unlinked because unlinkDbFilesOnExit: true");
