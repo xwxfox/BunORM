@@ -16,33 +16,47 @@ type Listener = (payload: unknown) => void;
 
 // ─── Typed event map ──────────────────────────────────────────────────────────
 
-export type EventMap<
-  Tables extends Record<string, TableConfig<any, any, any>>
-> = {
-  [K in keyof Tables & string as `${K}.${TableOperation}`]: TableEventPayload<
-    Tables[K] extends TableConfig<infer S> ? Infer<S> : never,
-    TableOperation
-  >;
-} & {
-  [K in keyof Tables & string as `${K}.${BroadOperation}`]: TableEventPayload<
-    Tables[K] extends TableConfig<infer S> ? Infer<S> : never,
-    BroadOperation
-  >;
-} & {
+// ─── Lifecycle event payloads (concrete, no remapping) ───────────────────────
+
+export interface LifecycleEventMap {
   start: { phase: "start"; timestamp: number };
   ready: { phase: "ready"; timestamp: number };
   shutdown: { phase: "shutdown"; timestamp: number };
   exit: { phase: "exit"; timestamp: number };
   fail: { phase: "fail"; error: Error; timestamp: number };
-};
+}
+
+// ─── Table event payload extractor (works by pattern-matching the key) ────────
+
+export type TableEventKey<Tables extends Record<string, TableConfig<any, any, any>>> =
+  | { [K in keyof Tables & string]: `${K}.${TableOperation}` }[keyof Tables & string]
+  | { [K in keyof Tables & string]: `${K}.${BroadOperation}` }[keyof Tables & string];
+
+export type ExtractEventPayload<
+  K extends string,
+  Tables extends Record<string, TableConfig<any, any, any>>
+> = K extends `${infer T}.${infer Op}`
+  ? T extends keyof Tables
+    ? Op extends TableEventOperation
+      ? TableEventPayload<
+          Tables[T] extends TableConfig<infer S> ? Infer<S> : never,
+          Op
+        >
+      : never
+    : never
+  : K extends keyof LifecycleEventMap
+    ? LifecycleEventMap[K]
+    : never;
+
+// ─── Public events interface ──────────────────────────────────────────────────
 
 export interface ORMEvents<
   Tables extends Record<string, TableConfig<any, any, any>>
 > {
   /** Global lifecycle event */
-  on<K extends keyof EventMap<Tables> & string>(
+  on<K extends (keyof LifecycleEventMap) & string>(
     event: K,
-    listener: (payload: EventMap<Tables>[K]) => void
+    listener: (payload: LifecycleEventMap[K]) => void
   ): () => void;
 
   /** Table-scoped operation event */
