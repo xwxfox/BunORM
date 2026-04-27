@@ -675,14 +675,18 @@ export function createORM<
       });
     };
 
+    function isListener(value: unknown): value is (payload: unknown) => void {
+      return typeof value === "function";
+    }
+
     const ormEvents = {
       on(eventOrTable: string, opOrListener: unknown, maybeListener?: unknown): () => void {
-        if (typeof opOrListener === "string" && typeof maybeListener === "function") {
+        if (typeof opOrListener === "string" && isListener(maybeListener)) {
           const event = `${eventOrTable}.${opOrListener}`;
-          return events.on(event, maybeListener as (payload: unknown) => void);
+          return events.on(event, maybeListener);
         }
-        if (typeof opOrListener === "function") {
-          return events.on(eventOrTable, opOrListener as (payload: unknown) => void);
+        if (isListener(opOrListener)) {
+          return events.on(eventOrTable, opOrListener);
         }
         raise("INVALID_EVENT_LISTENER", "bunorm: invalid event listener arguments");
       },

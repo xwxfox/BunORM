@@ -186,7 +186,7 @@ export class Repository<
 
   /** Validate + coerce via TypeBox Validator.Parse — throws on invalid data */
   parse(data: unknown): Infer<T> {
-    return this.validator.Parse(data) as Infer<T>;
+    return this.validator.Parse(data);
   }
 
   /** Type-guard only — no throw */

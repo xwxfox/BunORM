@@ -6,7 +6,9 @@
 
 import type { TableConfig, TableOperation, BroadOperation, TableEventOperation, TableEventPayload, Infer } from "./types.ts";
 
-type Listener = (payload: unknown) => void;
+/** Internal listener storage uses `any` to avoid contravariance issues
+ *  when storing typed listeners. The public API guarantees type safety. */
+type Listener = (payload: any) => void;
 
 // ─── Typed event map ──────────────────────────────────────────────────────────
 
