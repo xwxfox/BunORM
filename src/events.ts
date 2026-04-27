@@ -6,9 +6,13 @@
 
 import type { TableConfig, TableOperation, BroadOperation, TableEventOperation, TableEventPayload, Infer } from "./types.ts";
 
-/** Internal listener storage uses `any` to avoid contravariance issues
- *  when storing typed listeners. The public API guarantees type safety. */
-type Listener = (payload: any) => void;
+/** Internal listener storage.
+ *  Because TS functions are contravariant in parameters, a typed listener
+ *  `(payload: SpecificEvent) => void` cannot be stored in a
+ *  `Set<(payload: SpecificEvent) => void>` keyed by string.
+ *  The public ORMEvents interface provides full type safety; the cast to
+ *  `(payload: unknown) => void` happens at the single boundary in orm.ts. */
+type Listener = (payload: unknown) => void;
 
 // ─── Typed event map ──────────────────────────────────────────────────────────
 

@@ -675,18 +675,19 @@ export function createORM<
       });
     };
 
-    function isListener(value: unknown): value is (payload: unknown) => void {
-      return typeof value === "function";
-    }
-
     const ormEvents = {
       on(eventOrTable: string, opOrListener: unknown, maybeListener?: unknown): () => void {
-        if (typeof opOrListener === "string" && isListener(maybeListener)) {
+        if (typeof opOrListener === "string" && typeof maybeListener === "function") {
           const event = `${eventOrTable}.${opOrListener}`;
-          return events.on(event, maybeListener);
+          // The typed listener `(payload: SpecificEvent) => void` must be cast
+          // to `(payload: unknown) => void` for storage. This is safe because
+          // the event string is generated from the same table+operation, and
+          // the public ORMEvents interface guarantees the payload type matches.
+          return events.on(event, maybeListener as (payload: unknown) => void);
         }
-        if (isListener(opOrListener)) {
-          return events.on(eventOrTable, opOrListener);
+        if (typeof opOrListener === "function") {
+          // Same contravariance boundary cast for global lifecycle events.
+          return events.on(eventOrTable, opOrListener as (payload: unknown) => void);
         }
         raise("INVALID_EVENT_LISTENER", "bunorm: invalid event listener arguments");
       },
