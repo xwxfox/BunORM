@@ -110,7 +110,7 @@ export function introspectTable(
   for (const [fieldName, raw] of Object.entries(schema.properties)) {
     if (IsArray(raw) && IsObject(raw.items)) {
       // Sub-table
-      const itemSchema = raw.items as TObject;
+      const itemSchema = raw.items;
       const subTableName = `${tableName}__${fieldName}`;
       subTables.push({
         fieldName,
@@ -208,7 +208,7 @@ export function flattenRow(
     } else if (col.sqlType === "INTEGER" && typeof v === "boolean") {
       row[col.name] = v ? 1 : 0;
     } else {
-      row[col.name] = v as SqliteScalar;
+      row[col.name] = toSqliteScalar(v);
     }
   }
   return row;
@@ -219,11 +219,10 @@ export function flattenRow(
  */
 export function flattenSubRows(
   ownerPk: SqliteScalar,
-  items: unknown[],
+  items: Record<string, unknown>[],
   sub: SubTableMeta
 ): Array<Record<string, SqliteScalar>> {
-  return items.map((item, idx) => {
-    const obj = item as Record<string, unknown>;
+  return items.map((obj, idx) => {
     const row: Record<string, SqliteScalar> = {
       _owner_id: ownerPk,
       _index: idx,
@@ -237,7 +236,7 @@ export function flattenSubRows(
       } else if (col.sqlType === "INTEGER" && typeof v === "boolean") {
         row[col.name] = v ? 1 : 0;
       } else {
-        row[col.name] = v as SqliteScalar;
+        row[col.name] = toSqliteScalar(v);
       }
     }
     return row;
@@ -245,6 +244,13 @@ export function flattenSubRows(
 }
 
 type SqliteScalar = string | number | boolean | null | bigint;
+
+function toSqliteScalar(v: unknown): SqliteScalar {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") return v;
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
 
 /**
  * Rehydrate a flat DB row back into the full object shape.

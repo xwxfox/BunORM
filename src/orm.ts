@@ -792,7 +792,7 @@ export function createORM<
 
     // Seed
     if (opts.seed) {
-      opts.seed(accessors as BunORM<T, Rels>);
+      opts.seed(accessors);
     }
 
     // Ready

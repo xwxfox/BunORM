@@ -216,7 +216,7 @@ export class Repository<
         for (const sub of this.meta.subTables) {
           const items = obj[sub.fieldName];
           if (!globalThis.Array.isArray(items) || items.length === 0) continue;
-          const rows = flattenSubRows(pkVal as string | number, items, sub);
+          const rows = flattenSubRows(pkVal as string | number, items as Record<string, unknown>[], sub);
           for (const row of rows) {
             const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
             this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
@@ -252,7 +252,7 @@ export class Repository<
     for (const sub of this.meta.subTables) {
       const items = obj[sub.fieldName];
       if (!globalThis.Array.isArray(items) || items.length === 0) continue;
-      const rows = flattenSubRows(pkVal as string | number, items, sub);
+      const rows = flattenSubRows(pkVal as string | number, items as Record<string, unknown>[], sub);
       for (const row of rows) {
         const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
         this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
@@ -301,7 +301,7 @@ export class Repository<
 
           const items = obj[sub.fieldName];
           if (!globalThis.Array.isArray(items) || items.length === 0) continue;
-          const rows = flattenSubRows(pkVal as string | number, items, sub);
+          const rows = flattenSubRows(pkVal as string | number, items as Record<string, unknown>[], sub);
           for (const row of rows) {
             const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
             this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
@@ -459,7 +459,7 @@ export class Repository<
 
           const items = mergedObj[sub.fieldName];
           if (!globalThis.Array.isArray(items) || items.length === 0) continue;
-          const rows = flattenSubRows(pkVal as string | number, items, sub);
+          const rows = flattenSubRows(pkVal as string | number, items as Record<string, unknown>[], sub);
           for (const row of rows) {
             const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
             this.db.prepare(iSql).run(...(iParams as SQLQueryBindings[]));
