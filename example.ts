@@ -83,7 +83,7 @@ const orm = createORM({
 
 // ─── 3. Seed inventory ────────────────────────────────────────────────────────
 
-orm.transaction(() => {
+orm._transaction(() => {
   orm.inventory.upsert({
     data: {
       sku: "WIDGET-A",
@@ -155,7 +155,7 @@ console.log("Inserted sales:", sale1.id, sale2.id);
 const fetched = orm.sales.findById("SALE-001");
 console.log("\nFetched SALE-001:", fetched?.status);
 console.log("Line items:", fetched?.lineItems.length, "items");
-console.log("Schema hash present:", orm.meta.schemaHash !== null);
+console.log("Schema hash present:", orm._meta.schemaHash !== null);
 
 // Typed WHERE filter
 const paidSales = orm.sales.findMany({
@@ -249,7 +249,7 @@ console.log("\nDeleted SALE-002:", deleted);
 console.log("Remaining sales:", orm.sales.count());
 
 // ─── 12. Cleanup ──────────────────────────────────────────────────────────────
-orm.close();
+orm._close();
 console.log("\nDone — db closed cleanly.");
 
 // ─── 13. Timestamps demo ──────────────────────────────────────────────────────
@@ -279,4 +279,4 @@ console.log("__events before flush:", tsORM.__events.count());
 tsORM.__events.flush();
 console.log("__events after flush:", tsORM.__events.count());
 
-tsORM.close();
+tsORM._close();

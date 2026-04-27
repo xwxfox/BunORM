@@ -87,20 +87,20 @@ export type BunORM<
       >
     : never;
 } & {
-  transaction<R>(fn: () => R): R;
-  close(): void;
-  meta: MetaAccessors;
-  materialize<Owner extends keyof Tables & string>(
+  _transaction<R>(fn: () => R): R;
+  _close(): void;
+  _meta: MetaAccessors;
+  _materialize<Owner extends keyof Tables & string>(
     ownerTable: Owner,
     record: Record<string, unknown>
   ): Record<string, unknown>;
-  materializeMany<Owner extends keyof Tables & string>(
+  _materializeMany<Owner extends keyof Tables & string>(
     ownerTable: Owner,
     records: Record<string, unknown>[]
   ): Array<Record<string, unknown>>;
-  flush(opts?: { includeMeta?: boolean }): void;
-  migrate(): Promise<void>;
-  events: {
+  _flush(opts?: { includeMeta?: boolean }): void;
+  _migrate(): Promise<void>;
+  _events: {
     on(event: string, listener: (payload: unknown) => void): () => void;
     on(table: string, operation: string, listener: (payload: unknown) => void): () => void;
   };
@@ -834,14 +834,14 @@ export function createORM<
   }
 
   Object.assign(accessors, {
-    transaction: db.transaction.bind(db),
-    close,
-    meta: metaAccessors,
-    materialize,
-    materializeMany,
-    flush,
-    migrate: migrateFn,
-    events: ormEvents,
+    _transaction: db.transaction.bind(db),
+    _close: close,
+    _meta: metaAccessors,
+    _materialize: materialize,
+    _materializeMany: materializeMany,
+    _flush: flush,
+    _migrate: migrateFn,
+    _events: ormEvents,
   });
 
   } catch (err) {

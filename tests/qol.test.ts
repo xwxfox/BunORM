@@ -19,7 +19,7 @@ describe("QoL options", () => {
       tables: { users: table(UserSchema, (s) => ({ primaryKey: s.id })) },
     });
     orm1.users.insert({ id: "1", name: "A" });
-    orm1.close();
+    orm1._close();
     expect(existsSync(tmpDb)).toBe(true);
 
     const orm2 = createORM({
@@ -28,7 +28,7 @@ describe("QoL options", () => {
       rebuildOnLaunch: true,
     });
     expect(orm2.users.findById("1")).toBeNull();
-    orm2.close();
+    orm2._close();
   });
 
   test("seed runs after ready", () => {
@@ -43,7 +43,7 @@ describe("QoL options", () => {
     });
     expect(seeded).toBe(true);
     expect(orm.users.findById("s1")).not.toBeNull();
-    orm.close();
+    orm._close();
   });
 
   test("flushOnStart clears data before seed", () => {
@@ -52,7 +52,7 @@ describe("QoL options", () => {
       tables: { users: table(UserSchema, (s) => ({ primaryKey: s.id })) },
     });
     orm1.users.insert({ id: "1", name: "A" });
-    orm1.close();
+    orm1._close();
 
     const orm2 = createORM({
       path: tmpDb,
@@ -64,7 +64,7 @@ describe("QoL options", () => {
     });
     expect(orm2.users.findById("1")).toBeNull();
     expect(orm2.users.findById("2")).not.toBeNull();
-    orm2.close();
+    orm2._close();
   });
 
   test("unlinkDbFilesOnExit removes files on close", async () => {
@@ -74,7 +74,7 @@ describe("QoL options", () => {
       unlinkDbFilesOnExit: true,
     });
     orm.users.insert({ id: "1", name: "A" });
-    orm.close();
+    orm._close();
     await new Promise((r) => setTimeout(r, 50));
     expect(existsSync(tmpDb)).toBe(false);
   });

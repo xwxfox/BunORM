@@ -51,14 +51,14 @@ describe("Repository events", () => {
     });
 
     let received: any;
-    orm.events.on("inventory", "insert", (e) => { received = e; });
+    orm._events.on("inventory", "insert", (e) => { received = e; });
 
     orm.inventory.insert({ sku: "A", name: "Widget", price: 9.99, stock: 10 });
     expect(received).not.toBeUndefined();
     expect(received.table).toBe("inventory");
     expect(received.operation).toBe("insert");
     expect(received.data.sku).toBe("A");
-    orm.close();
+    orm._close();
   });
 
   test("broad write event fires on insert", () => {
@@ -70,12 +70,12 @@ describe("Repository events", () => {
     });
 
     let received: any;
-    orm.events.on("inventory", "write", (e) => { received = e; });
+    orm._events.on("inventory", "write", (e) => { received = e; });
 
     orm.inventory.insert({ sku: "B", name: "Gadget", price: 24.99, stock: 5 });
     expect(received).not.toBeUndefined();
     expect(received.operation).toBe("write");
-    orm.close();
+    orm._close();
   });
 
   test("findById emits read event", () => {
@@ -89,11 +89,11 @@ describe("Repository events", () => {
     orm.inventory.insert({ sku: "C", name: "Thing", price: 1, stock: 1 });
 
     let received: any;
-    orm.events.on("inventory", "read", (e) => { received = e; });
+    orm._events.on("inventory", "read", (e) => { received = e; });
 
     orm.inventory.findById("C");
     expect(received).not.toBeUndefined();
     expect(received.operation).toBe("read");
-    orm.close();
+    orm._close();
   });
 });

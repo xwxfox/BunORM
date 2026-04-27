@@ -94,7 +94,7 @@ describe("migrate runner", () => {
     expect(applied[0]!.name).toBe("20250101_000001_add_email");
     expect(applied[1]!.name).toBe("20250101_000002_add_index");
 
-    orm.close();
+    orm._close();
   });
 
   test("skips already applied migrations", async () => {
@@ -125,10 +125,10 @@ describe("migrate runner", () => {
     checkDb.close();
 
     expect(applied).toHaveLength(1);
-    orm.close();
+    orm._close();
   });
 
-  test("orm.migrate() calls runner with configured dir", async () => {
+  test("orm._migrate() calls runner with configured dir", async () => {
     const mig1 = join(tmpDir, "20250101_000001_add_email.ts");
     writeFileSync(
       mig1,
@@ -149,13 +149,13 @@ describe("migrate runner", () => {
       migrations: { dir: tmpDir },
     });
 
-    await orm.migrate();
+    await orm._migrate();
 
     const checkDb = new BunDatabase({ path: dbPath });
     const applied = checkDb.prepare('SELECT "name" FROM "_bunorm_migrations" ORDER BY "name"').all() as Array<{ name: string }>;
     checkDb.close();
 
     expect(applied).toHaveLength(1);
-    orm.close();
+    orm._close();
   });
 });

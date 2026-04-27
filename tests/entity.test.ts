@@ -58,7 +58,7 @@ describe("BunORM", () => {
   });
 
   afterEach(() => {
-    orm.close();
+    orm._close();
   });
 
   test("insert and findById", () => {
@@ -183,19 +183,19 @@ describe("BunORM", () => {
     expect(orm.sales.findById("S7")).not.toBeNull();
   });
 
-  test("orm.flush clears all tables", () => {
+  test("orm._flush clears all tables", () => {
     orm.sales.insert({ id: "S8", status: "paid", total: 10, lineItems: [] });
     orm.inventory.insert({ sku: "C", name: "Thing", price: 1, stock: 1 });
 
-    orm.flush();
+    orm._flush();
 
     expect(orm.sales.findById("S8")).toBeNull();
     expect(orm.inventory.findById("C")).toBeNull();
   });
 
   test("schema hash stored in meta", () => {
-    expect(orm.meta.schemaHash).not.toBeNull();
-    expect(orm.meta.tables).toEqual(["inventory", "sales"]);
+    expect(orm._meta.schemaHash).not.toBeNull();
+    expect(orm._meta.tables).toEqual(["inventory", "sales"]);
   });
 });
 
@@ -218,7 +218,7 @@ describe("BunORM timestamps", () => {
   });
 
   afterEach(() => {
-    orm.close();
+    orm._close();
   });
 
   test("timestamps auto-injected on insert", () => {
