@@ -6,13 +6,17 @@
 
 import type { TableConfig, TableOperation, BroadOperation, TableEventOperation, TableEventPayload, Infer } from "./types.ts";
 
+/** @category Events */
 export type Listener = (payload: unknown) => void;
 
 // ─── Typed event map ──────────────────────────────────────────────────────────
 
 // ─── Lifecycle event payloads (concrete, no remapping) ───────────────────────
 
-/** lifecycle events emitted by the orm */
+/**
+ * lifecycle events emitted by the orm
+ * @category Events
+ */
 export interface LifecycleEventMap {
   start: { phase: "start"; timestamp: number };
   ready: { phase: "ready"; timestamp: number };
@@ -45,7 +49,10 @@ export type ExtractEventPayload<
 
 // ─── Public events interface ──────────────────────────────────────────────────
 
-/** typed event listener api */
+/**
+ * typed event listener api
+ * @category Events
+ */
 export interface ORMEvents<
   Tables extends Record<string, TableConfig<any, any, any>>
 > {
@@ -66,7 +73,10 @@ export interface ORMEvents<
   ): () => void;
 }
 
-/** @internal */
+/**
+ * @internal
+ * @category Events
+ */
 export class EventBus {
   private readonly listeners = new Map<string, Set<Listener>>();
   private readonly tableActive = new Set<string>();

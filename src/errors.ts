@@ -3,14 +3,20 @@
  * Central error type with invisible tracing and structured context.
  */
 
-/** a single entry in the error trace */
+/**
+ * a single entry in the error trace
+ * @category Errors
+ */
 export interface TraceEntry {
   label: string;
   time: number;
   details?: Record<string, unknown>;
 }
 
-/** context captured when an error occurs */
+/**
+ * context captured when an error occurs
+ * @category Errors
+ */
 export interface ORMErrorContext {
   table?: string;
   operation?: string;
@@ -20,7 +26,10 @@ export interface ORMErrorContext {
   [key: string]: unknown;
 }
 
-/** structured error with trace and context */
+/**
+ * structured error with trace and context
+ * @category Errors
+ */
 export class ORMError extends Error {
   readonly code: string;
   readonly trace: TraceEntry[];
@@ -60,7 +69,10 @@ export function currentTrace(): TraceEntry[] {
   return _traceStack.slice();
 }
 
-/** @internal */
+/**
+ * @internal
+ * @category Errors
+ */
 export function withTrace<T>(
   label: string,
   details: Record<string, unknown> | undefined,
@@ -74,7 +86,10 @@ export function withTrace<T>(
   }
 }
 
-/** throw an ORMError with trace and context */
+/**
+ * throw an ORMError with trace and context
+ * @category Errors
+ */
 export function raise(
   code: string,
   message: string,
@@ -87,7 +102,10 @@ export function raise(
   });
 }
 
-/** how to handle runtime errors */
+/**
+ * how to handle runtime errors
+ * @category Errors
+ */
 export type ErrorPolicy = "throw" | "emit" | "emit-swallow" | "crash";
 
 /** @internal */

@@ -59,6 +59,7 @@ function getActualPkColumns(actual: InspectorTable): string[] {
 
 // ─── Diff logic ───────────────────────────────────────────────────────────────
 
+/** @category Migration */
 export function computeDiff(desired: DesiredTable[], actual: InspectorTable[]): SchemaDiff {
   const safe: SchemaChange[] = [];
   const unsafe: SchemaChange[] = [];

@@ -1,15 +1,18 @@
 import { type TableMeta } from "./schema.ts";
 
+/** @category Schema */
 export interface TimestampConfig {
   createdAt?: string;
   updatedAt?: string;
 }
 
+/** @category Schema */
 export const DEFAULT_TIMESTAMP_NAMES: Required<Pick<TimestampConfig, "createdAt" | "updatedAt">> = {
   createdAt: "createdAt",
   updatedAt: "updatedAt",
 };
 
+/** @category Schema */
 export function resolveTimestampNames(
   config: boolean | TimestampConfig | undefined,
   meta: TableMeta

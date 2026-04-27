@@ -76,6 +76,7 @@ export class RelationBuilder<
   }
 }
 
+/** @category Relations */
 export function createRelationBuilder<T extends Record<string, TableConfig<any, any, any>>>(
   tables: T
 ): RelationBuilder<T> {

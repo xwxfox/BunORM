@@ -1,6 +1,7 @@
 /**
  * foxdb/src/typed-relation.ts
  * Runtime + compile-time representation of a single relation.
+ * @category Relations
  */
 
 export interface TypedRelation<

@@ -11,7 +11,10 @@ import { Database, constants, type SQLQueryBindings } from "bun:sqlite";
 /** Narrow re-export so callers don't need to import bun:sqlite themselves */
 export type { SQLQueryBindings };
 
-/** prepared sqlite statement */
+/**
+ * prepared sqlite statement
+ * @category Database
+ */
 export interface BunStatement {
   run(...params: SQLQueryBindings[]): { changes: number; lastInsertRowid: number | bigint };
   all(...params: SQLQueryBindings[]): unknown[];
@@ -21,6 +24,7 @@ export interface BunStatement {
 
 // ─── Pragma defaults ──────────────────────────────────────────────────────────
 
+/** @category Database */
 export interface DatabaseOptions {
   /** Path to the SQLite file. Defaults to ":memory:" */
   path?: string;
@@ -46,7 +50,10 @@ export interface DatabaseOptions {
 
 // ─── foxdb Database ──────────────────────────────────────────────────────────
 
-/** sqlite database with statement caching and pragma tuning */
+/**
+ * sqlite database with statement caching and pragma tuning
+ * @category Database
+ */
 export class BunDatabase {
   /** underlying bun:sqlite database */
   readonly db: Database;

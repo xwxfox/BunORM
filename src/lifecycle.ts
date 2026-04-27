@@ -11,7 +11,10 @@ import type { foxdb } from "./orm.ts";
 import type { TableConfig } from "./types.ts";
 import type { TypedRelation } from "./typed-relation.ts";
 
-/** context passed to lifecycle hooks */
+/**
+ * context passed to lifecycle hooks
+ * @category Lifecycle
+ */
 export interface ORMContext<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
@@ -24,7 +27,10 @@ export interface ORMContext<
   logger: { log: (...args: unknown[]) => void; error: (...args: unknown[]) => void };
 }
 
-/** lifecycle hook signature */
+/**
+ * lifecycle hook signature
+ * @category Lifecycle
+ */
 export type LifecycleHook<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
@@ -63,7 +69,10 @@ function runSyncOrLog<
   }
 }
 
-/** manages startup and shutdown hook execution */
+/**
+ * manages startup and shutdown hook execution
+ * @category Lifecycle
+ */
 export class LifecycleManager<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]

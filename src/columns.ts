@@ -19,6 +19,7 @@ import {
   type TSchema,
 } from "typebox";
 
+/** @category Schema */
 export type TScalarSchema =
   | TString
   | TNumber
@@ -28,14 +29,20 @@ export type TScalarSchema =
   | TLiteral<number>
   | TLiteral<boolean>;
 
-/** typed reference to a scalar column */
+/**
+ * typed reference to a scalar column
+ * @category Schema
+ */
 export interface ColumnRef<N extends string = string, S extends TScalarSchema = TScalarSchema> {
   readonly _tag: "ColumnRef";
   readonly name: N;
   readonly schema: S;
 }
 
-/** map of scalar columns to their typed refs */
+/**
+ * map of scalar columns to their typed refs
+ * @category Schema
+ */
 export type ColumnRefs<T extends TObject> = {
   readonly [K in keyof T["properties"]as T["properties"][K] extends TScalarSchema
   ? K

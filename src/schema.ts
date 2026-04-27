@@ -22,8 +22,10 @@ import {
 
 // ─── Column metadata ──────────────────────────────────────────────────────────
 
+/** @category Advanced */
 export type SqliteType = "TEXT" | "INTEGER" | "REAL" | "BLOB";
 
+/** @category Advanced */
 export interface ColumnMeta {
   name: string;
   sqlType: SqliteType;
@@ -32,6 +34,7 @@ export interface ColumnMeta {
   optional: boolean;
 }
 
+/** @category Advanced */
 export interface SubTableMeta {
   /** e.g. "lineItems" */
   fieldName: string;
@@ -43,6 +46,7 @@ export interface SubTableMeta {
   columns: ColumnMeta[];
 }
 
+/** @category Advanced */
 export interface TableMeta {
   tableName: string;
   columns: ColumnMeta[];
@@ -100,6 +104,7 @@ function buildColumns(properties: TProperties): ColumnMeta[] {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/** @category Advanced */
 export function introspectTable(
   tableName: string,
   schema: TObject
@@ -137,6 +142,7 @@ export function introspectTable(
 
 // ─── DDL generation ───────────────────────────────────────────────────────────
 
+/** @category Advanced */
 export function buildCreateTableSQL(
   meta: TableMeta,
   primaryKey: string

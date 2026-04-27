@@ -29,6 +29,7 @@ const SchemaHashSchema = Type.String();
 
 // Stored schema JSON is Record<string, TObject> - we can't deeply validate
 // TypeBox schemas at runtime without the compiler, so we accept any object.
+/** @category Database */
 export const SchemaJSONSchema = Type.Record(Type.String(), Type.Unknown());
 
 const TablesSchema = Type.Array(Type.String());
@@ -54,6 +55,7 @@ const RelationsCompiled = Schema.Compile(RelationsSchema);
 const VersionCompiled = Schema.Compile(VersionSchema);
 
 type SchemaHash = Static<typeof SchemaHashSchema>;
+/** @category Database */
 export type SchemaJSON = Static<typeof SchemaJSONSchema>;
 type TablesList = Static<typeof TablesSchema>;
 type RelationsList = Static<typeof RelationsSchema>;
@@ -67,6 +69,7 @@ const ENCODING_DEFLATE_BASE64 = "deflate-base64";
 
 // ─── MetaStore ────────────────────────────────────────────────────────────────
 
+/** @category Database */
 export class MetaStore {
   private readonly db: BunDatabase;
 

@@ -174,6 +174,7 @@ function handlePolicy(
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/** @category Migration */
 export function applySync(
   diff: SchemaDiff,
   db: BunDatabase,

@@ -24,6 +24,7 @@ export default {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/** @category Migration */
 export function createMigration(name: string, migrationsDir: string): string {
   if (!existsSync(migrationsDir)) {
     mkdirSync(migrationsDir, { recursive: true });
