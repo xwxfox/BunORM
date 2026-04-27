@@ -114,7 +114,7 @@ export function createORM<
     unlinkDbFiles(dbPath);
   }
   const db = new BunDatabase(opts);
-  let accessors: BunORM<T, Rels> = {} as BunORM<T, Rels>;
+  let accessors: BunORM<T, Rels>;
   const events = new EventBus();
 
   try {
@@ -125,7 +125,7 @@ export function createORM<
     }
 
     // Create repositories with eager validation
-    const repos = new Map<string, Repository<TObject, string>>();
+    const repos = new Map<string, Repository<any, any, any, any>>();
 
     for (const [name, config] of tableEntries) {
       const meta = introspectTable(name, config.schema);
@@ -155,7 +155,7 @@ export function createORM<
       }
 
       const repo = new Repository(name, config, db);
-      repos.set(name, repo as Repository<TObject, string>);
+      repos.set(name, repo);
     }
 
     // Wire EventBus into repositories
@@ -653,7 +653,7 @@ export function createORM<
 
     // ─── Build accessor object with getters ─────────────────────────────────────
 
-    accessors = {} as BunORM<T, Rels>;
+    accessors = Object.create(null);
 
     for (const name of Object.keys(opts.tables)) {
       Object.defineProperty(accessors, name, {
@@ -676,18 +676,21 @@ export function createORM<
     };
 
     const ormEvents = {
-      on(eventOrTable: string, opOrListener: any, maybeListener?: any): () => void {
-        if (typeof maybeListener === "function") {
+      on(eventOrTable: string, opOrListener: unknown, maybeListener?: unknown): () => void {
+        if (typeof opOrListener === "string" && typeof maybeListener === "function") {
           const event = `${eventOrTable}.${opOrListener}`;
-          return events.on(event, maybeListener);
+          return events.on(event, maybeListener as (payload: unknown) => void);
         }
-        return events.on(eventOrTable, opOrListener);
+        if (typeof opOrListener === "function") {
+          return events.on(eventOrTable, opOrListener as (payload: unknown) => void);
+        }
+        raise("INVALID_EVENT_LISTENER", "bunorm: invalid event listener arguments");
       },
     };
 
     // Build context
     ctx = {
-      orm: accessors as BunORM<T, Rels>,
+      orm: accessors,
       db,
       meta,
       tables: Object.keys(opts.tables),
