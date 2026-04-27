@@ -7,11 +7,13 @@
 
 import type { BunDatabase } from "./database.ts";
 import type { MetaStore } from "./meta.ts";
-import type { BunORM, CreateORMOptions } from "./orm.ts";
+import type { BunORM } from "./orm.ts";
+import type { TableConfig } from "./types.ts";
+import type { TypedRelation } from "./typed-relation.ts";
 
 export interface ORMContext<
-  T extends Record<string, any> = Record<string, any>,
-  Rels extends readonly any[] = any
+  T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
+  Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > {
   /** Public ORM accessor */
   orm: BunORM<T, Rels>;
@@ -22,19 +24,29 @@ export interface ORMContext<
   /** Known table names */
   tables: string[];
   /** Internal repository map for advanced use */
-  repos: Map<string, any>;
+  repos: Map<string, unknown>;
   /** Logger proxy (debug mode) */
   logger: { log: (...args: unknown[]) => void; error: (...args: unknown[]) => void };
 }
 
 export type LifecycleHook<
-  T extends Record<string, any> = Record<string, any>,
-  Rels extends readonly any[] = any
+  T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
+  Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > = (ctx: ORMContext<T, Rels>) => void | Promise<void>;
 
+/** Narrow an unknown value to a PromiseLike for async hook detection */
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "then" in value &&
+    typeof (value as Record<string, unknown>).then === "function"
+  );
+}
+
 function runSyncOrLog<
-  T extends Record<string, any> = Record<string, any>,
-  Rels extends readonly any[] = any
+  T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
+  Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 >(
   hooks: LifecycleHook<T, Rels>[],
   ctx: ORMContext<T, Rels>,
@@ -43,8 +55,8 @@ function runSyncOrLog<
   for (const h of hooks) {
     try {
       const result = h(ctx);
-      if (result && typeof (result as Promise<void>).then === "function") {
-        (result as Promise<void>).catch((err: unknown) => {
+      if (result && isPromiseLike(result)) {
+        result.catch((err: unknown) => {
           console.error(`[bunorm] async ${label} hook error:`, err);
         });
       }
@@ -55,8 +67,8 @@ function runSyncOrLog<
 }
 
 export class LifecycleManager<
-  T extends Record<string, any> = Record<string, any>,
-  Rels extends readonly any[] = any
+  T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
+  Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > {
   private startHooks: LifecycleHook<T, Rels>[] = [];
   private readyHooks: LifecycleHook<T, Rels>[] = [];

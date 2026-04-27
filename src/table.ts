@@ -19,20 +19,21 @@ export interface TableDescriptor<
   TS extends TimestampConfig = undefined
 > extends TableConfig<T, PK, TS> {}
 
+/** Shared configuration shape for all overloads */
+interface TableConfigShape<PK extends string, TS extends TimestampConfig> {
+  primaryKey: ColumnRef<PK>;
+  indexes?: IndexDefinition[];
+  subTables?: Partial<Record<string, SubTableConfig>>;
+  timestamps?: TS;
+}
+
 export function table<
   T extends TObject,
   PK extends string,
   const TS extends boolean
 >(
   schema: T,
-  configure: (
-    columns: ColumnRefs<T>
-  ) => {
-    primaryKey: ColumnRef<PK>;
-    indexes?: IndexDefinition[];
-    subTables?: Partial<Record<string, SubTableConfig>>;
-    timestamps: TS;
-  }
+  configure: (columns: ColumnRefs<T>) => TableConfigShape<PK, TS> & { timestamps: TS }
 ): TableDescriptor<T, PK, TS>;
 
 export function table<
@@ -41,14 +42,7 @@ export function table<
   const TS extends { createdAt?: string; updatedAt?: string }
 >(
   schema: T,
-  configure: (
-    columns: ColumnRefs<T>
-  ) => {
-    primaryKey: ColumnRef<PK>;
-    indexes?: IndexDefinition[];
-    subTables?: Partial<Record<string, SubTableConfig>>;
-    timestamps: TS;
-  }
+  configure: (columns: ColumnRefs<T>) => TableConfigShape<PK, TS> & { timestamps: TS }
 ): TableDescriptor<T, PK, TS>;
 
 export function table<
@@ -56,21 +50,18 @@ export function table<
   PK extends string
 >(
   schema: T,
-  configure: (
-    columns: ColumnRefs<T>
-  ) => {
-    primaryKey: ColumnRef<PK>;
-    indexes?: IndexDefinition[];
-    subTables?: Partial<Record<string, SubTableConfig>>;
-    timestamps?: never;
-  }
+  configure: (columns: ColumnRefs<T>) => TableConfigShape<PK, undefined>
 ): TableDescriptor<T, PK, undefined>;
 
-export function table(
-  schema: TObject,
-  configure: (columns: ColumnRefs<TObject>) => Record<string, unknown>
-): TableDescriptor<TObject, string, TimestampConfig> {
+export function table<
+  T extends TObject,
+  PK extends string,
+  TS extends TimestampConfig
+>(
+  schema: T,
+  configure: (columns: ColumnRefs<T>) => TableConfigShape<PK, TS>
+): TableDescriptor<T, PK, TS> {
   const columns = createColumnProxy(schema);
   const config = configure(columns);
-  return { schema, ...config } as TableDescriptor<TObject, string, TimestampConfig>;
+  return { schema, ...config };
 }

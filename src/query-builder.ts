@@ -16,7 +16,26 @@ import { raise } from "./errors.ts";
 
 type FilterEntry = { sql: string; params: unknown[] };
 
-function buildFilter(column: string, filter: Record<string, unknown>): FilterEntry {
+/** Runtime shape of any filter — independent of the column's value type */
+type FilterShape =
+  | { eq: unknown }
+  | { ne: unknown }
+  | { gt: unknown }
+  | { gte: unknown }
+  | { lt: unknown }
+  | { lte: unknown }
+  | { like: string }
+  | { between: [unknown, unknown] }
+  | { in: readonly unknown[] }
+  | { notIn: readonly unknown[] }
+  | { isNull: true }
+  | { isNotNull: true };
+
+function isFilterShape(value: unknown): value is FilterShape {
+  return typeof value === "object" && value !== null;
+}
+
+function buildFilter(column: string, filter: FilterShape): FilterEntry {
   if ("eq" in filter) return { sql: `"${column}" = ?`, params: [filter.eq] };
   if ("ne" in filter) return { sql: `"${column}" != ?`, params: [filter.ne] };
   if ("gt" in filter) return { sql: `"${column}" > ?`, params: [filter.gt] };
@@ -25,22 +44,22 @@ function buildFilter(column: string, filter: Record<string, unknown>): FilterEnt
   if ("lte" in filter) return { sql: `"${column}" <= ?`, params: [filter.lte] };
   if ("like" in filter) return { sql: `"${column}" LIKE ?`, params: [filter.like] };
   if ("between" in filter) {
-    const [lo, hi] = filter.between as [unknown, unknown];
+    const [lo, hi] = filter.between;
     return { sql: `"${column}" BETWEEN ? AND ?`, params: [lo, hi] };
   }
   if ("in" in filter) {
-    const vals = filter.in as unknown[];
+    const vals = filter.in;
     const placeholders = vals.map(() => "?").join(", ");
-    return { sql: `"${column}" IN (${placeholders})`, params: vals };
+    return { sql: `"${column}" IN (${placeholders})`, params: [...vals] };
   }
   if ("notIn" in filter) {
-    const vals = filter.notIn as unknown[];
+    const vals = filter.notIn;
     const placeholders = vals.map(() => "?").join(", ");
-    return { sql: `"${column}" NOT IN (${placeholders})`, params: vals };
+    return { sql: `"${column}" NOT IN (${placeholders})`, params: [...vals] };
   }
   if ("isNull" in filter) return { sql: `"${column}" IS NULL`, params: [] };
   if ("isNotNull" in filter) return { sql: `"${column}" IS NOT NULL`, params: [] };
-  throw new Error(`bunorm: unknown filter operator for column "${column}"`);
+  raise("UNKNOWN_FILTER", `bunorm: unknown filter operator for column "${column}"`, { column });
 }
 
 export interface WhereResult {
@@ -57,8 +76,8 @@ export function buildWhere<T extends TObject>(
   const params: unknown[] = [];
 
   for (const [col, filter] of Object.entries(where)) {
-    if (filter === undefined) continue;
-    const entry = buildFilter(col, filter as Record<string, unknown>);
+    if (!isFilterShape(filter)) continue;
+    const entry = buildFilter(col, filter);
     parts.push(entry.sql);
     params.push(...entry.params);
   }
@@ -73,9 +92,9 @@ export function buildOrderBy<T extends TObject>(
   orderBy: FindOptions<T>["orderBy"]
 ): string {
   if (!orderBy) return "";
-  const clauses = globalThis.Array.isArray(orderBy) ? orderBy : [orderBy];
+  const clauses: OrderByClause<T>[] = globalThis.Array.isArray(orderBy) ? orderBy : [orderBy];
   if (clauses.length === 0) return "";
-  const parts = (clauses as OrderByClause<T>[]).map(
+  const parts = clauses.map(
     (o) => `"${o.column}" ${o.direction ?? "ASC"}`
   );
   return `ORDER BY ${parts.join(", ")}`;

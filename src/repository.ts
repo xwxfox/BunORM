@@ -122,21 +122,26 @@ export class Repository<
   }
 
   /** Wrap raw data in an entity object */
-  private _wrap(data: Record<string, unknown>): Record<string, unknown> {
-    if (!this._entityProto) return data;
+  private _wrap(data: Record<string, unknown>): Entity<Infer<T>, Mat, TS> {
+    if (!this._entityProto) return data as Entity<Infer<T>, Mat, TS>;
     const entity = Object.create(this._entityProto);
     Object.assign(entity, data);
-    return entity;
+    return entity as Entity<Infer<T>, Mat, TS>;
   }
 
-  private _emit<Op extends TableOperation>(
-    operation: Op,
-    payload: Omit<TableEventPayload<Infer<T>, Op>, "table" | "operation" | "timestamp">
+  /** Narrow a parsed schema value to a plain record for dynamic property access */
+  private _record(value: Infer<T>): Record<string, unknown> {
+    return value as Record<string, unknown>;
+  }
+
+  private _emit(
+    operation: TableOperation,
+    payload: Omit<TableEventPayload<Infer<T>, TableOperation>, "table" | "operation" | "timestamp">
   ): void {
     if (!this._events) return;
     const ts = Date.now();
     const base = { table: this.tableName, operation, timestamp: ts };
-    const full = { ...base, ...payload } as TableEventPayload<Infer<T>, Op>;
+    const full: TableEventPayload<Infer<T>, TableOperation> = { ...base, ...payload };
 
     const opKey = `${this.tableName}.${operation}`;
     if (this._events.has(opKey)) {
@@ -194,7 +199,7 @@ export class Repository<
   insert(data: InsertData<T>): Entity<Infer<T>, Mat, TS> {
     return withTrace("repository.insert", { table: this.tableName }, () => {
       const parsed = this.parse(data);
-      const obj = parsed as Record<string, unknown>;
+      const obj = this._record(parsed);
       const now = Date.now();
       if (this._timestampNames.createdAt) obj[this._timestampNames.createdAt] = now;
       if (this._timestampNames.updatedAt) obj[this._timestampNames.updatedAt] = now;
@@ -220,7 +225,7 @@ export class Repository<
       });
 
       this._emit("insert", { data: parsed });
-      return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
+      return this._wrap(this._record(parsed));
     });
   }
 
@@ -229,10 +234,10 @@ export class Repository<
     return withTrace("repository.insertMany", { table: this.tableName }, () => {
       const parsed = records.map((r) => this.parse(r));
       this.db.transaction(() => {
-        for (const p of parsed) this._insertParsed(p as Record<string, unknown>);
+        for (const p of parsed) this._insertParsed(this._record(p));
       });
       this._emit("insertMany", { data: parsed });
-      return parsed.map((p) => this._wrap(p as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>);
+      return parsed.map((p) => this._wrap(this._record(p)));
     });
   }
 
@@ -260,21 +265,21 @@ export class Repository<
   upsert(opts: UpsertOptions<T, PK>): Entity<Infer<T>, Mat, TS> {
     return withTrace("repository.upsert", { table: this.tableName }, () => {
       const parsed = this.parse(opts.data);
-      const obj = parsed as Record<string, unknown>;
+      const obj = this._record(parsed);
       const now = Date.now();
       if (this._timestampNames.createdAt) obj[this._timestampNames.createdAt] = now;
       if (this._timestampNames.updatedAt) obj[this._timestampNames.updatedAt] = now;
       const flat = flattenRow(obj, this.meta);
 
-      const conflictCols = (
+      const conflictCols: string[] = (
         globalThis.Array.isArray(opts.conflictTarget)
           ? opts.conflictTarget
           : [opts.conflictTarget]
-      ) as string[];
+      );
 
       const allCols = Object.keys(flat);
-      const updateCols =
-        (opts.update as string[] | undefined) ??
+      const updateCols: string[] =
+        opts.update ??
         allCols.filter((c) => !conflictCols.includes(c));
 
       this.db.transaction(() => {
@@ -305,7 +310,7 @@ export class Repository<
       });
 
       this._emit("upsert", { data: parsed });
-      return this._wrap(parsed as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
+      return this._wrap(this._record(parsed));
     });
   }
 
@@ -329,7 +334,7 @@ export class Repository<
       | Record<string, unknown>
       | undefined;
     if (!row) return null;
-    return this._wrap(this._hydrateOne(row)) as Entity<Infer<T>, Mat, TS>;
+    return this._wrap(this._hydrateOne(row));
   }
 
   // ─── Find many ─────────────────────────────────────────────────────────────
@@ -339,7 +344,7 @@ export class Repository<
       const { sql, params } = buildSelect(this.tableName, opts);
       const stmt = this.db.prepare(sql);
       const rows = stmt.all(...(params as SQLQueryBindings[])) as Record<string, unknown>[];
-      const results = rows.map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat, TS>);
+      const results = rows.map((r) => this._wrap(this._hydrateOne(r, opts.include)));
       this._emit("findMany", { options: opts, result: results });
       return results;
     });
@@ -355,7 +360,7 @@ export class Repository<
 
       const rows = (
         this.db.prepare(sql).all(...(params as SQLQueryBindings[])) as Record<string, unknown>[]
-      ).map((r) => this._wrap(this._hydrateOne(r, opts.include)) as Entity<Infer<T>, Mat, TS>);
+      ).map((r) => this._wrap(this._hydrateOne(r, opts.include)));
 
       const countRow = this.db.prepare(countSql).get(...(countParams as SQLQueryBindings[])) as {
         _count: number;
@@ -378,7 +383,7 @@ export class Repository<
       const { sql, params } = buildSelect(this.tableName, { ...opts, limit: 1 });
       const stmt = this.db.prepare(sql);
       const row = stmt.get(...(params as SQLQueryBindings[])) as Record<string, unknown> | undefined;
-      const result = row ? this._wrap(this._hydrateOne(row, opts.include)) as Entity<Infer<T>, Mat, TS> : null;
+      const result = row ? this._wrap(this._hydrateOne(row, opts.include)) : null;
       this._emit("findOne", { options: opts, result });
       return result;
     });
@@ -418,7 +423,7 @@ export class Repository<
 
   update(data: UpdateData<T, PK>): Entity<Infer<T>, Mat, TS> | null {
     return withTrace("repository.update", { table: this.tableName }, () => {
-      const obj = data as Record<string, unknown>;
+      const obj = this._record(data as Infer<T>);
       const pk = this.descriptor.primaryKey.name;
       const pkVal = obj[pk];
       if (pkVal === undefined || pkVal === null) {
@@ -432,8 +437,8 @@ export class Repository<
       const existing = this._findByIdRaw(pkVal as Infer<T>[PK]);
       if (!existing) return null;
 
-      const merged = this.parse({ ...(existing as object), ...obj });
-      const mergedObj = merged as Record<string, unknown>;
+      const merged = this.parse({ ...existing, ...data });
+      const mergedObj = this._record(merged);
       if (this._timestampNames.updatedAt) {
         mergedObj[this._timestampNames.updatedAt] = Date.now();
       }
@@ -462,8 +467,8 @@ export class Repository<
         }
       });
 
-      const result = this._wrap(merged as Record<string, unknown>) as Entity<Infer<T>, Mat, TS>;
-      this._emit("update", { id: pkVal, data: obj as unknown as Partial<Infer<T>> });
+      const result = this._wrap(this._record(merged));
+      this._emit("update", { id: pkVal, data: { ...data } });
       return result;
     });
   }

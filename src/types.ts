@@ -423,7 +423,7 @@ export interface TableEventPayload<
 > {
   table: string;
   operation: Op;
-  data?: T | T[] | Partial<T>;
+  data?: T | T[] | Partial<T> | Record<string, unknown>;
   result?: T | T[] | PageResult<T> | number | null;
   id?: unknown;
   where?: unknown;

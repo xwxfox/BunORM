@@ -4,7 +4,20 @@
  * a ColumnRef whose type encodes the exact column name.
  */
 
-import type { TObject, TString, TNumber, TInteger, TBoolean, TLiteral } from "typebox";
+import {
+  IsString,
+  IsNumber,
+  IsInteger,
+  IsBoolean,
+  IsLiteral,
+  type TObject,
+  type TString,
+  type TNumber,
+  type TInteger,
+  type TBoolean,
+  type TLiteral,
+  type TSchema,
+} from "typebox";
 
 export type TScalarSchema =
   | TString
@@ -31,13 +44,24 @@ export type ColumnRefs<T extends TObject> = {
     : never;
 };
 
+/** Runtime type-guard: determines if a schema property is a scalar */
+function isScalarSchema(prop: TSchema): prop is TScalarSchema {
+  return (
+    IsString(prop) ||
+    IsNumber(prop) ||
+    IsInteger(prop) ||
+    IsBoolean(prop) ||
+    IsLiteral(prop)
+  );
+}
+
 /** Build the runtime proxy object */
 export function createColumnProxy<T extends TObject>(schema: T): ColumnRefs<T> {
-  const proxy = {} as Record<string, ColumnRef<string, TScalarSchema>>;
+  const proxy: Record<string, ColumnRef<string, TScalarSchema>> = {};
   for (const key of Object.keys(schema.properties)) {
     const prop = schema.properties[key];
-    if (prop && typeof prop === "object" && !("items" in prop)) {
-      proxy[key] = { _tag: "ColumnRef", name: key, schema: prop as TScalarSchema };
+    if (prop && isScalarSchema(prop)) {
+      proxy[key] = { _tag: "ColumnRef", name: key, schema: prop };
     }
   }
   return proxy as ColumnRefs<T>;

@@ -17,6 +17,7 @@ import {
   type TObject,
   type TSchema,
   type TProperties,
+  type TLiteral,
 } from "typebox";
 
 // ─── Column metadata ──────────────────────────────────────────────────────────
@@ -66,8 +67,8 @@ function schemaToSqlType(schema: TSchema): SqliteType {
   if (IsBoolean(schema)) return "INTEGER"; // SQLite has no bool; 0/1
   if (IsString(schema)) return "TEXT";
   if (IsLiteral(schema)) {
-    const v = (schema as { const: unknown }).const;
-    if (typeof v === "number") return typeof v === "number" && Number.isInteger(v) ? "INTEGER" : "REAL";
+    const v: unknown = schema.const;
+    if (typeof v === "number") return Number.isInteger(v) ? "INTEGER" : "REAL";
     if (typeof v === "boolean") return "INTEGER";
     return "TEXT";
   }
