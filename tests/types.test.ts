@@ -1,5 +1,5 @@
 /**
- * bunorm/tests/types.test.ts
+ * foxdb/tests/types.test.ts
  * Compile-time type safety checks.
  * If this file compiles with tsc --noEmit, all tests pass.
  */
@@ -27,12 +27,12 @@ void valid;
 // ─── Invalid primaryKey should error at property access ───────────────────────
 
 const cols = createColumnProxy(ItemSchema);
-// @ts-expect-error — "nonExistent" is not a scalar column
+// @ts-expect-error - "nonExistent" is not a scalar column
 void cols.nonExistent;
 
 // ─── Invalid index column should error at property access ─────────────────────
 
-// @ts-expect-error — "nonExistent" is not a scalar column
+// @ts-expect-error - "nonExistent" is not a scalar column
 void cols.nonExistent;
 
 // ─── Sub-table in index should error ──────────────────────────────────────────
@@ -43,5 +43,5 @@ const WithSub = Object({
 });
 
 const subCols = createColumnProxy(WithSub);
-// @ts-expect-error — tags is an array (sub-table), not a scalar
+// @ts-expect-error - tags is an array (sub-table), not a scalar
 void subCols.tags;

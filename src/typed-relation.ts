@@ -1,5 +1,5 @@
 /**
- * bunorm/src/typed-relation.ts
+ * foxdb/src/typed-relation.ts
  * Runtime + compile-time representation of a single relation.
  */
 

@@ -1,5 +1,5 @@
 /**
- * bunorm/tests/entity.test.ts
+ * foxdb/tests/entity.test.ts
  * Runtime tests for entity wrapping, materialization, and serialization.
  */
 
@@ -47,7 +47,7 @@ function makeTestORM() {
   });
 }
 
-describe("BunORM", () => {
+describe("foxdb", () => {
   let orm: ReturnType<typeof makeTestORM>;
 
   beforeEach(() => {
@@ -178,7 +178,7 @@ describe("BunORM", () => {
     orm.sales.flush();
     expect(orm.sales.findById("S7")).toBeNull();
 
-    // Schema still exists — can insert again
+    // Schema still exists - can insert again
     orm.sales.insert({ id: "S7", status: "paid", total: 10, lineItems: [] });
     expect(orm.sales.findById("S7")).not.toBeNull();
   });
@@ -210,7 +210,7 @@ function makeTimestampORM() {
   });
 }
 
-describe("BunORM timestamps", () => {
+describe("foxdb timestamps", () => {
   let orm: ReturnType<typeof makeTimestampORM>;
 
   beforeEach(() => {

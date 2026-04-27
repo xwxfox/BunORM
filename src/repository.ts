@@ -1,6 +1,6 @@
 /**
- * bunorm/src/repository.ts
- * Typed repository for a single table — insert, find, update, delete,
+ * foxdb/src/repository.ts
+ * Typed repository for a single table - insert, find, update, delete,
  * upsert, paginate, count, and sub-table hydration.
  * Zero runtime casts; all types are inferred from the TObject schema.
  */
@@ -47,7 +47,27 @@ import type { TimestampConfig } from "./timestamps.ts";
 
 // ─── Repository ───────────────────────────────────────────────────────────────
 
-/** typed repository for a single table */
+/**
+ * Typed repository for a single table. Every entry in your `tables` config
+ * becomes one of these on the ORM object, fully typed to its schema.
+ *
+ * @category Repositories
+ *
+ * @example
+ * ```ts
+ * const orm = createORM({
+ *   tables: {
+ *     users: table(UserSchema, (s) => ({ primaryKey: s.id })),
+ *   },
+ * });
+ *
+ * // All methods are fully typed - wrong property names are caught at compile time
+ * orm.users.insert({ id: "u1", name: "alice", email: "a@x.com" });
+ * const user = orm.users.findById("u1");
+ * orm.users.update({ id: "u1", name: "alice smith" });
+ * orm.users.deleteById("u1");
+ * ```
+ */
 export class Repository<
   T extends TObject,
   PK extends ScalarKeys<T>,
@@ -55,7 +75,7 @@ export class Repository<
   TS = {}
 > {
   readonly tableName: string;
-  /** table metadata — columns, sub-tables, indexes */
+  /** table metadata - columns, sub-tables, indexes */
   readonly meta: TableMeta;
 
   private readonly validator: ReturnType<typeof Compile<T>>;
@@ -174,19 +194,53 @@ export class Repository<
 
   // ─── Validation ────────────────────────────────────────────────────────────
 
-/** validate and coerce data against the schema. throws on invalid input. */
+  /**
+   * Validate and coerce data against the schema. Throws on invalid input.
+   *
+   * @group Validation
+   *
+   * @example
+   * ```ts
+   * const user = orm.users.parse({ id: "u1", name: "alice" });
+   * // user is typed as Infer<typeof UserSchema>
+   * ```
+   */
   parse(data: unknown): Infer<T> {
     return this.validator.Parse(data);
   }
 
-  /** type-guard — returns true if data matches the schema */
+  /**
+   * Type-guard - returns true if data matches the schema.
+   *
+   * @group Validation
+   *
+   * @example
+   * ```ts
+   * if (orm.users.check(someData)) {
+   *   // someData is now typed as Infer<typeof UserSchema>
+   * }
+   * ```
+   */
   check(data: unknown): data is Infer<T> {
     return this.validator.Check(data);
   }
 
   // ─── Insert ────────────────────────────────────────────────────────────────
 
-  /** insert a single record */
+  /**
+   * Insert a single record. Returns the inserted entity.
+   *
+   * @group Writing
+   *
+   * @example
+   * ```ts
+   * const user = orm.users.insert({
+   *   id: "u1",
+   *   name: "alice",
+   *   email: "alice@example.com",
+   * });
+   * ```
+   */
   insert(data: InsertData<T>): Entity<Infer<T>, Mat, TS> {
     return withTrace("repository.insert", { table: this.tableName }, () => {
       const parsed = this.parse(data);
@@ -220,7 +274,19 @@ export class Repository<
     });
   }
 
-  /** insert many records in a single transaction */
+  /**
+   * Insert many records in a single transaction.
+   *
+   * @group Writing
+   *
+   * @example
+   * ```ts
+   * orm.users.insertMany([
+   *   { id: "u1", name: "alice", email: "a@x.com" },
+   *   { id: "u2", name: "bob", email: "b@x.com" },
+   * ]);
+   * ```
+   */
   insertMany(records: InsertData<T>[]): Entity<Infer<T>, Mat, TS>[] {
     return withTrace("repository.insertMany", { table: this.tableName }, () => {
       const parsed = records.map((r) => this.parse(r));
@@ -253,7 +319,20 @@ export class Repository<
 
   // ─── Upsert ────────────────────────────────────────────────────────────────
 
-  /** insert or update on conflict */
+  /**
+   * Insert or update on conflict. If the record exists (by conflict target),
+   * it updates the specified columns instead.
+   *
+   * @group Writing
+   *
+   * @example
+   * ```ts
+   * orm.users.upsert({
+   *   data: { id: "u1", name: "alice", email: "new@x.com" },
+   *   conflictTarget: "id",
+   * });
+   * ```
+   */
   upsert(opts: UpsertOptions<T, PK>): Entity<Infer<T>, Mat, TS> {
     return withTrace("repository.upsert", { table: this.tableName }, () => {
       const parsed = this.parse(opts.data);
@@ -308,7 +387,17 @@ export class Repository<
 
   // ─── Find by PK ────────────────────────────────────────────────────────────
 
-  /** find a record by its primary key */
+  /**
+   * Find a record by its primary key.
+   *
+   * @group Reading
+   *
+   * @example
+   * ```ts
+   * const user = orm.users.findById("u1");
+   * if (user) console.log(user.name);
+   * ```
+   */
   findById(id: Infer<T>[PK]): Entity<Infer<T>, Mat, TS> | null {
     return withTrace("repository.findById", { table: this.tableName }, () => {
       const result = this._findByIdRaw(id);
@@ -317,7 +406,7 @@ export class Repository<
     });
   }
 
-  /** Internal findById without event emission — used by update() */
+  /** Internal findById without event emission - used by update() */
   private _findByIdRaw(id: Infer<T>[PK]): Entity<Infer<T>, Mat, TS> | null {
     const pk = this.descriptor.primaryKey.name;
     const stmt = this.db.prepare(
@@ -332,7 +421,23 @@ export class Repository<
 
   // ─── Find many ─────────────────────────────────────────────────────────────
 
-  /** find many records matching the given filters */
+  /**
+   * Find many records matching the given filters.
+   *
+   * @group Reading
+   *
+   * @example
+   * ```ts
+   * const adults = orm.users.findMany({
+   *   where: { age: { gte: 18 } },
+   *   orderBy: { column: "name", direction: "ASC" },
+   *   limit: 10,
+   * });
+   *
+   * // Include sub-tables
+   * const orders = orm.orders.findMany({ include: ["lineItems"] });
+   * ```
+   */
   findMany(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS>[] {
     return withTrace("repository.findMany", { table: this.tableName }, () => {
       const { sql, params } = buildSelect(this.tableName, opts);
@@ -344,7 +449,23 @@ export class Repository<
     });
   }
 
-  /** find many with total count — useful for pagination */
+  /**
+   * Find many with total count - useful for pagination.
+   *
+   * @group Reading
+   *
+   * @example
+   * ```ts
+   * const page = orm.users.findPage({
+   *   where: { status: { eq: "active" } },
+   *   limit: 10,
+   *   offset: 0,
+   * });
+   * // page.data - the records
+   * // page.total - total matching records
+   * // page.limit, page.offset - what you passed in
+   * ```
+   */
   findPage(opts: FindOptions<T> = {}): PageResult<Entity<Infer<T>, Mat, TS>> {
     return withTrace("repository.findPage", { table: this.tableName }, () => {
       const { sql, params, countSql, countParams } = buildSelect(
@@ -372,7 +493,19 @@ export class Repository<
     });
   }
 
-  /** find a single record matching the given filters */
+  /**
+   * Find a single record matching the given filters. Equivalent to `findMany`
+   * with `limit: 1`, but returns the entity directly (or `null`).
+   *
+   * @group Reading
+   *
+   * @example
+   * ```ts
+   * const admin = orm.users.findOne({
+   *   where: { role: { eq: "admin" } },
+   * });
+   * ```
+   */
   findOne(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS> | null {
     return withTrace("repository.findOne", { table: this.tableName }, () => {
       const { sql, params } = buildSelect(this.tableName, { ...opts, limit: 1 });
@@ -384,7 +517,20 @@ export class Repository<
     });
   }
 
-  /** find many with resolved relations (n+1 safe) */
+  /**
+   * Find many with resolved relations (n+1 safe). If you have cross-table
+   * relations configured, this eagerly loads them in a single batch query.
+   *
+   * @group Reading
+   *
+   * @example
+   * ```ts
+   * const orders = orm.orders.findManyMaterialized();
+   * for (const item of orders[0].lineItems) {
+   *   console.log(item.product.name); // eagerly resolved
+   * }
+   * ```
+   */
   findManyMaterialized(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS>[] {
     const rows = this.findMany(opts);
     if (!this._materializeMany) return rows;
@@ -404,7 +550,17 @@ export class Repository<
 
   // ─── Count ─────────────────────────────────────────────────────────────────
 
-  /** count records matching the given filters */
+  /**
+   * Count records matching the given filters.
+   *
+   * @group Reading
+   *
+   * @example
+   * ```ts
+   * const total = orm.users.count();
+   * const adults = orm.users.count({ age: { gte: 18 } });
+   * ```
+   */
   count(where?: WhereClause<T>): number {
     return withTrace("repository.count", { table: this.tableName }, () => {
       const { sql, params } = buildWhere(where);
@@ -417,20 +573,30 @@ export class Repository<
 
   // ─── Update ────────────────────────────────────────────────────────────────
 
-  /** update a record — must include the primary key */
+  /**
+   * Update a record - must include the primary key. Returns the updated
+   * entity, or `null` if no record matched.
+   *
+   * @group Writing
+   *
+   * @example
+   * ```ts
+   * orm.users.update({ id: "u1", name: "alice smith" });
+   * ```
+   */
   update(data: UpdateData<T, PK>): Entity<Infer<T>, Mat, TS> | null {
     return withTrace("repository.update", { table: this.tableName }, () => {
       const obj = this._record(data as Infer<T>);
       const pk = this.descriptor.primaryKey.name;
       const pkVal = obj[pk];
       if (pkVal === undefined || pkVal === null) {
-        raise("UPDATE_MISSING_PK", `bunorm: update() requires primary key "${pk}"`, {
+        raise("UPDATE_MISSING_PK", `foxdb: update() requires primary key "${pk}"`, {
           table: this.tableName,
           column: pk,
         });
       }
 
-      // Fetch existing, merge, validate — use raw find to avoid spurious read events
+      // Fetch existing, merge, validate - use raw find to avoid spurious read events
       const existing = this._findByIdRaw(pkVal as Infer<T>[PK]);
       if (!existing) return null;
 
@@ -472,7 +638,16 @@ export class Repository<
 
   // ─── Delete ────────────────────────────────────────────────────────────────
 
-  /** delete a record by its primary key */
+  /**
+   * Delete a record by its primary key. Returns `true` if a record was deleted.
+   *
+   * @group Writing
+   *
+   * @example
+   * ```ts
+   * const deleted = orm.users.deleteById("u1");
+   * ```
+   */
   deleteById(id: Infer<T>[PK]): boolean {
     return withTrace("repository.deleteById", { table: this.tableName }, () => {
       const pk = this.descriptor.primaryKey.name;
@@ -493,7 +668,16 @@ export class Repository<
     });
   }
 
-  /** delete records matching the given filters */
+  /**
+   * Delete records matching the given filters. Returns the number of rows deleted.
+   *
+   * @group Writing
+   *
+   * @example
+   * ```ts
+   * const removed = orm.users.deleteWhere({ status: { eq: "banned" } });
+   * ```
+   */
   deleteWhere(where: WhereClause<T>): number {
     return withTrace("repository.deleteWhere", { table: this.tableName }, () => {
       const { sql: whereSql, params } = buildWhere(where);
@@ -518,7 +702,16 @@ export class Repository<
 
   // ─── Table lifecycle ───────────────────────────────────────────────────────
 
-  /** truncate the table and all sub-tables */
+  /**
+   * Truncate the table and all sub-tables. Deletes all rows but keeps the schema.
+   *
+   * @group Lifecycle
+   *
+   * @example
+   * ```ts
+   * orm.users.flush(); // users table is now empty
+   * ```
+   */
   flush(): void {
     withTrace("repository.flush", { table: this.tableName }, () => {
       this.db.exec(`DELETE FROM "${this.tableName}"`);
@@ -529,7 +722,16 @@ export class Repository<
     });
   }
 
-  /** drop the table and all sub-tables */
+  /**
+   * Drop the table and all sub-tables. **This destroys the schema and all data.**
+   *
+   * @group Lifecycle
+   *
+   * @example
+   * ```ts
+   * orm.users.drop(); // table no longer exists
+   * ```
+   */
   drop(): void {
     for (const sub of this.meta.subTables) {
       this.db.exec(`DROP TABLE IF EXISTS "${sub.tableName}"`);
@@ -579,7 +781,18 @@ export class Repository<
 
   // ─── Raw access ────────────────────────────────────────────────────────────
 
-  /** run raw sql — escape hatch */
+  /**
+   * Run raw SQL - escape hatch for queries the ORM doesn't support directly.
+   *
+   * @group Raw SQL
+   *
+   * @example
+   * ```ts
+   * const rows = orm.users.raw<{ name: string; count: number }>(
+   *   'SELECT name, COUNT(*) as count FROM users GROUP BY name'
+   * );
+   * ```
+   */
   raw<R = unknown>(sql: string, ...params: unknown[]): R[] {
     return this.db.prepare(sql).all(...(params as SQLQueryBindings[])) as R[];
   }

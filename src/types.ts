@@ -1,6 +1,6 @@
 /**
  * bunorm/src/types.ts
- * Core type utilities — all ORM-level TypeScript types live here.
+ * Core type utilities - all ORM-level TypeScript types live here.
  * Zero runtime cost; pure compile-time machinery.
  */
 
@@ -29,8 +29,8 @@ export type ScalarProperties<P extends TProperties> = {
 /** @internal */
 export type ArrayOfObjectProperties<P extends TProperties> = {
   [K in keyof P as P[K] extends TArray<TObject>
-    ? K
-    : never]: P[K] extends TArray<infer Item> ? Item : never;
+  ? K
+  : never]: P[K] extends TArray<infer Item> ? Item : never;
 };
 
 /** column names that are scalar (not arrays or nested objects) */
@@ -44,10 +44,10 @@ export type SubTableKeys<T extends TObject> =
 /** @internal */
 export type SubTableScalarPath<T extends TObject> = {
   [K in SubTableKeys<T>]: T["properties"][K] extends TArray<infer Item>
-    ? Item extends TObject
-      ? `${K}.${ScalarKeys<Item>}`
-      : never
-    : never;
+  ? Item extends TObject
+  ? `${K}.${ScalarKeys<Item>}`
+  : never
+  : never;
 }[SubTableKeys<T>];
 
 /** @internal */
@@ -79,38 +79,56 @@ export type SubTableItemKeys<
   K extends SubTableKeys<T>
 > = T["properties"][K] extends TArray<infer Item>
   ? Item extends TObject
-    ? ScalarKeys<Item>
-    : never
+  ? ScalarKeys<Item>
+  : never
   : never;
 
 // ─── Filter / Where types ─────────────────────────────────────────────────────
 
-type ScalarFilter<V> = V extends string
+export type ScalarFilter<V> = V extends string
   ?
-      | { eq: V }
-      | { ne: V }
-      | { like: string }
-      | { in: V[] }
-      | { notIn: V[] }
-      | { isNull: true }
-      | { isNotNull: true }
+  | { eq: V }
+  | { ne: V }
+  | { like: string }
+  | { in: V[] }
+  | { notIn: V[] }
+  | { isNull: true }
+  | { isNotNull: true }
   : V extends number | bigint
   ?
-      | { eq: V }
-      | { ne: V }
-      | { gt: V }
-      | { gte: V }
-      | { lt: V }
-      | { lte: V }
-      | { between: [V, V] }
-      | { in: V[] }
-      | { isNull: true }
-      | { isNotNull: true }
+  | { eq: V }
+  | { ne: V }
+  | { gt: V }
+  | { gte: V }
+  | { lt: V }
+  | { lte: V }
+  | { between: [V, V] }
+  | { in: V[] }
+  | { isNull: true }
+  | { isNotNull: true }
   : V extends boolean
   ? { eq: V } | { isNull: true } | { isNotNull: true }
   : { isNull: true } | { isNotNull: true };
 
-/** where filters for queries — only scalar columns */
+/**
+ * Where filters for queries - only scalar columns are filterable.
+ *
+ * @example
+ * ```ts
+ * // String filters
+ * orm.users.findMany({ where: { name: { like: "%alice%" } } });
+ * orm.users.findMany({ where: { email: { in: ["a@x.com", "b@x.com"] } } });
+ *
+ * // Number filters
+ * orm.users.findMany({ where: { age: { gte: 18, lte: 65 } } });
+ * orm.products.findMany({ where: { price: { between: [10, 100] } } });
+ *
+ * // Boolean / null filters
+ * orm.users.findMany({ where: { active: { eq: true } } });
+ * orm.users.findMany({ where: { deletedAt: { isNull: true } } });
+ * ```
+ * @category Query Types
+ */
 export type WhereClause<T extends TObject> = {
   [K in ScalarKeys<T>]?: ScalarFilter<Static<T["properties"][K]>>;
 };
@@ -133,7 +151,31 @@ export interface PaginationOptions {
 
 // ─── Query options ────────────────────────────────────────────────────────────
 
-/** options for findMany / findPage / findOne */
+/**
+ * Options for `findMany`, `findPage`, and `findOne`.
+ *
+ * @example
+ * ```ts
+ * orm.users.findMany({
+ *   where: { age: { gte: 18 } },
+ *   orderBy: { column: "name", direction: "ASC" },
+ *   limit: 10,
+ *   offset: 0,
+ * });
+ *
+ * // Multiple orderBy clauses
+ * orm.users.findMany({
+ *   orderBy: [
+ *     { column: "status", direction: "DESC" },
+ *     { column: "createdAt", direction: "ASC" },
+ *   ],
+ * });
+ *
+ * // Include sub-tables
+ * orm.orders.findMany({ include: ["lineItems"] });
+ * ```
+ * @category Query Types
+ */
 export interface FindOptions<T extends TObject> extends PaginationOptions {
   where?: WhereClause<T>;
   orderBy?: OrderByClause<T> | OrderByClause<T>[];
@@ -145,7 +187,7 @@ export interface FindOptions<T extends TObject> extends PaginationOptions {
 /** full record to insert */
 export type InsertData<T extends TObject> = Infer<T>;
 
-/** update payload — must include the primary key */
+/** update payload - must include the primary key */
 export type UpdateData<T extends TObject, PK extends ScalarKeys<T>> = Pick<
   Infer<T>,
   PK
@@ -175,7 +217,25 @@ export type TimestampShape<T extends TimestampConfig> = true extends T
 
 // ─── Entity helper ───────────────────────────────────────────────────────────
 
-/** a database row with optional timestamps and materialized relations */
+/**
+ * A database row with optional timestamps and materialized relations.
+ *
+ * @example
+ * ```ts
+ * // Without relations
+ * type User = Entity<{ id: string; name: string }>;
+ * // → { id: string; name: string }
+ *
+ * // With timestamps
+ * type UserWithTS = Entity<{ id: string }, never, { createdAt: number }>;
+ * // → { id: string; createdAt: number }
+ *
+ * // With relations
+ * type UserWithRels = Entity<{ id: string }, { posts: Post[] }>;
+ * // → { id: string; materialize(): { posts: Post[] } }
+ * ```
+ * @category Query Types
+ */
 export type Entity<T, Mat = never, TS = {}> = [Mat] extends [never]
   ? T & TS
   : T & TS & { materialize(): Mat };
@@ -233,16 +293,16 @@ export interface RelationEntry<
 export type RelationsConfig<
   Tables extends Record<string, TableConfig<any, any, any>>
 > = {
-  [K in keyof Tables & string]?: Array<
-    {
-      [Target in keyof Tables & string]: RelationEntry<
-        Tables,
-        K,
-        Target
-      >;
-    }[keyof Tables & string]
-  >;
-};
+    [K in keyof Tables & string]?: Array<
+      {
+        [Target in keyof Tables & string]: RelationEntry<
+          Tables,
+          K,
+          Target
+        >;
+      }[keyof Tables & string]
+    >;
+  };
 
 // ─── Materialized types ───────────────────────────────────────────────────────
 
@@ -255,8 +315,8 @@ export type ScalarMergeNames<
   { ownerTable: Owner; kind: "scalar" }
 > extends TypedRelation<any, any, any, any, any, infer A>
   ? A extends string
-    ? A
-    : never
+  ? A
+  : never
   : never;
 
 /** @internal */
@@ -270,8 +330,8 @@ export type ScalarMergeType<
   { ownerTable: Owner; kind: "scalar"; as: Name }
 > extends TypedRelation<any, any, infer TT, any, any, any>
   ? TT extends keyof Tables
-    ? Infer<Tables[TT]["schema"]> | null
-    : never
+  ? Infer<Tables[TT]["schema"]> | null
+  : never
   : never;
 
 /** @internal */
@@ -280,13 +340,13 @@ export type ScalarMerge<
   Rels extends readonly TypedRelation[],
   Owner extends string
 > = {
-  [K in ScalarMergeNames<Rels, Owner>]: ScalarMergeType<
-    Tables,
-    Rels,
-    Owner,
-    K
-  >;
-};
+    [K in ScalarMergeNames<Rels, Owner>]: ScalarMergeType<
+      Tables,
+      Rels,
+      Owner,
+      K
+    >;
+  };
 
 /** @internal */
 export type SubMergeNames<
@@ -298,8 +358,8 @@ export type SubMergeNames<
   { ownerTable: Owner; kind: "subTable"; ownerField: `${Sub}.${string}` }
 > extends TypedRelation<any, any, any, any, any, infer A>
   ? A extends string
-    ? A
-    : never
+  ? A
+  : never
   : never;
 
 /** @internal */
@@ -314,8 +374,8 @@ export type SubMergeType<
   { ownerTable: Owner; kind: "subTable"; ownerField: `${Sub}.${string}`; as: Name }
 > extends TypedRelation<any, any, infer TT, any, any, any>
   ? TT extends keyof Tables
-    ? Infer<Tables[TT]["schema"]> | null
-    : never
+  ? Infer<Tables[TT]["schema"]> | null
+  : never
   : never;
 
 /** @internal */
@@ -325,16 +385,30 @@ export type SubMerge<
   Owner extends string,
   Sub extends string
 > = {
-  [K in SubMergeNames<Rels, Owner, Sub>]: SubMergeType<
-    Tables,
-    Rels,
-    Owner,
-    Sub,
-    K
-  >;
-};
+    [K in SubMergeNames<Rels, Owner, Sub>]: SubMergeType<
+      Tables,
+      Rels,
+      Owner,
+      Sub,
+      K
+    >;
+  };
 
-/** entity with resolved relations */
+/**
+ * Entity with resolved relations. Sub-table arrays get their related entities
+ * merged in, and scalar relations appear as direct properties.
+ *
+ * @example
+ * ```ts
+ * // Given: OrderSchema with lineItems: Array<{ sku: string; qty: number }>
+ * // And a relation: lineItems.sku → products.sku (as "product")
+ *
+ * type M = Materialized<OrderSchema, Tables, Rels, "orders">;
+ * // M.lineItems becomes Array<{ sku: string; qty: number; product: Product | null }>
+ * // M also gets scalar relation properties like `.related` accessors
+ * ```
+ * @category Relations
+ */
 export type Materialized<
   T extends TObject,
   Tables extends Record<string, TableConfig<any, any, any>>,
@@ -342,10 +416,10 @@ export type Materialized<
   Owner extends string
 > = {
   [K in keyof Infer<T>]: K extends string
-    ? Infer<T>[K] extends Array<infer Item>
-      ? Array<Item & SubMerge<Tables, Rels, Owner, K>>
-      : Infer<T>[K]
-    : Infer<T>[K];
+  ? Infer<T>[K] extends Array<infer Item>
+  ? Array<Item & SubMerge<Tables, Rels, Owner, K>>
+  : Infer<T>[K]
+  : Infer<T>[K];
 } & ScalarMerge<Tables, Rels, Owner>;
 
 // ─── Result types ─────────────────────────────────────────────────────────────
@@ -364,7 +438,7 @@ export interface PageResult<T> {
 export interface UpsertOptions<T extends TObject, PK extends ScalarKeys<T>> {
   data: InsertData<T>;
   conflictTarget: PK | PK[];
-  /** columns to update on conflict — defaults to all non-pk columns */
+  /** columns to update on conflict - defaults to all non-pk columns */
   update?: Array<ScalarKeys<T>>;
 }
 

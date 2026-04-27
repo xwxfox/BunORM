@@ -1,10 +1,10 @@
 /**
- * bunorm — comprehensive usage example
+ * foxdb - comprehensive usage example
  *
  * Demonstrates:
  *   • Typed schemas, column refs, indexes, sub-tables
  *   • Relations (scalar + sub-table) with lazy & batch materialization
- *   • The event system — fine-grained and broad table events
+ *   • The event system - fine-grained and broad table events
  *   • Lifecycle hooks (start / ready / shutdown / exit)
  *   • Seed, rebuildOnLaunch, flushOnStart, unlinkDbFilesOnExit
  *   • Error tracing with ORMError + configurable errorPolicy
@@ -114,23 +114,23 @@ const orm = createORM({
     });
   },
 
-  /** Startup hook — runs before validation / sync */
+  /** Startup hook - runs before validation / sync */
   onStart: (ctx) => {
     console.log("[lifecycle:onStart] Tables:", ctx.tables.join(", "));
   },
 
-  /** Ready hook — DB is fully usable */
+  /** Ready hook - DB is fully usable */
   onReady: (ctx) => {
     console.log("[lifecycle:onReady] Schema hash:", ctx.orm._meta.schemaHash?.slice(0, 8));
   },
 
-  /** Shutdown hook — before DB closes */
+  /** Shutdown hook - before DB closes */
   onShutdown: (ctx) => {
     console.log("[lifecycle:onShutdown] Persisting final state...");
     ctx.orm.activity.insert({ id: "shutdown", message: "ORM shutting down", level: "info" });
   },
 
-  /** Exit hook — after DB is closed */
+  /** Exit hook - after DB is closed */
   onExit: (_ctx) => {
     console.log("[lifecycle:onExit] Goodbye!");
   },
@@ -176,7 +176,7 @@ const sale = orm.sales.insert({
 });
 console.log("Inserted sale:", sale.id, "| createdAt:", sale.createdAt);
 
-// Find by PK — sub-table hydrated automatically
+// Find by PK - sub-table hydrated automatically
 const fetched = orm.sales.findById("SALE-001");
 console.log("Fetched line items:", fetched?.lineItems.length);
 
@@ -232,7 +232,7 @@ orm._transaction(() => {
     id: "SALE-002", customerId: "TX", status: "pending", total: 1, createdAt: Date.now(), lineItems: [],
   });
 });
-console.log("Transaction committed — sales count:", orm.sales.count());
+console.log("Transaction committed - sales count:", orm.sales.count());
 
 // ─── 8. Meta Access ───────────────────────────────────────────────────────────
 
@@ -261,4 +261,4 @@ console.log("\nEvent listeners removed.");
 
 console.log("\n─── Closing ───");
 orm._close();
-console.log("Done — DB files unlinked because unlinkDbFilesOnExit: true");
+console.log("Done - DB files unlinked because unlinkDbFilesOnExit: true");

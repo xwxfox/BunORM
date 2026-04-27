@@ -1,12 +1,16 @@
 {
-  "name": "bunorm",
+  "name": "foxdb",
   "version": "0.0.1",
   "description": "Synchronous ORM lib for Bun:sqlite - easier db handling",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "2prepare": "npm run build"
+    "2prepare": "npm run build",
+    "docs:api": "typedoc",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "typedoc && vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "keywords": [
     "orm",
@@ -28,13 +32,13 @@
     "bun.js",
     "bun.sh"
   ],
-  "author": "deadlinecode",
+  "author": "xwxfox",
   "repository": {
     "type": "git",
-    "url": "https://github.com/deadlinecode/BunORM.git"
+    "url": "https://github.com/xwxfox/foxdb.git"
   },
   "bugs": {
-    "url": "https://github.com/deadlinecode/BunORM/issues"
+    "url": "https://github.com/xwxfox/foxdb/issues"
   },
   "license": "ISC",
   "files": [
@@ -42,7 +46,15 @@
   ],
   "devDependencies": {
     "@types/bun": "latest",
-    "typescript": "^5"
+    "typedoc": "^0.28.19",
+    "typedoc-plugin-coverage": "^4.0.3",
+    "typedoc-plugin-extras": "^4.0.1",
+    "typedoc-plugin-markdown": "^4.11.0",
+    "typedoc-plugin-mdn-links": "^5.1.1",
+    "typedoc-plugin-merge-modules": "^7.0.0",
+    "typedoc-vitepress-theme": "^1.1.2",
+    "typescript": "^5",
+    "vitepress": "^1.6.4"
   },
   "dependencies": {
     "typebox": "^1.1.30"

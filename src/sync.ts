@@ -1,6 +1,6 @@
 /**
- * bunorm/src/sync.ts
- * Sync policy engine — applies safe changes and handles unsafe ones
+ * foxdb/src/sync.ts
+ * Sync policy engine - applies safe changes and handles unsafe ones
  * according to the configured policy.
  */
 
@@ -38,7 +38,7 @@ function rebuildTable(
   db: BunDatabase,
   dt: DesiredTable
 ): void {
-  const tempName = `${dt.name}_bunorm_temp`;
+  const tempName = `${dt.name}_foxdb_temp`;
   const colDefs = dt.columns.map((c) => {
     const notNull = !c.nullable ? " NOT NULL" : "";
     const pk = c.name === dt.primaryKey ? " PRIMARY KEY" : "";
@@ -63,7 +63,7 @@ function createSubTable(
   const sub = change.subTable;
   const owner = findDesiredTable(desired, ownerTable);
   if (!owner) {
-    throw new Error(`bunorm sync: cannot find owner table "${ownerTable}" for sub-table "${sub.tableName}"`);
+    throw new Error(`foxdb sync: cannot find owner table "${ownerTable}" for sub-table "${sub.tableName}"`);
   }
 
   const pkCol = owner.columns.find((c) => c.name === owner.primaryKey);
@@ -92,7 +92,7 @@ function applySafeChanges(diff: SchemaDiff, db: BunDatabase, desired: DesiredTab
     switch (change.kind) {
       case "add-table": {
         const dt = findDesiredTable(desired, change.table);
-        if (!dt) throw new Error(`bunorm sync: missing desired schema for table "${change.table}"`);
+        if (!dt) throw new Error(`foxdb sync: missing desired schema for table "${change.table}"`);
         db.exec(buildCreateTableSQL(dt));
         break;
       }
@@ -102,7 +102,7 @@ function applySafeChanges(diff: SchemaDiff, db: BunDatabase, desired: DesiredTab
       }
       case "add-column": {
         if (!change.column.nullable) {
-          throw new Error(`bunorm sync: cannot auto-apply required column "${change.column.name}" without default. Use a migration.`);
+          throw new Error(`foxdb sync: cannot auto-apply required column "${change.column.name}" without default. Use a migration.`);
         }
         db.exec(buildAddColumnSQL(change.table, change.column));
         break;
@@ -113,10 +113,10 @@ function applySafeChanges(diff: SchemaDiff, db: BunDatabase, desired: DesiredTab
       }
       case "change-nullable": {
         if (!change.to) {
-          throw new Error(`bunorm sync: cannot auto-apply nullable → NOT NULL change on "${change.table}.${change.column}". Use a migration.`);
+          throw new Error(`foxdb sync: cannot auto-apply nullable → NOT NULL change on "${change.table}.${change.column}". Use a migration.`);
         }
         const dt = findDesiredTable(desired, change.table);
-        if (!dt) throw new Error(`bunorm sync: missing desired schema for table "${change.table}"`);
+        if (!dt) throw new Error(`foxdb sync: missing desired schema for table "${change.table}"`);
         rebuildTable(db, dt);
         break;
       }
@@ -143,7 +143,7 @@ function handlePolicy(
 
   if (policy === "warn") {
     if (diff.unsafe.length > 0) {
-      console.warn(`[bunorm] ${diff.unsafe.length} unsafe schema change(s) detected:`);
+      console.warn(`[foxdb] ${diff.unsafe.length} unsafe schema change(s) detected:`);
       for (const c of diff.unsafe) {
         console.warn(`  - ${c.kind}: ${JSON.stringify(c)}`);
       }
@@ -154,7 +154,7 @@ function handlePolicy(
   if (policy === "error") {
     if (diff.unsafe.length > 0 || diff.safe.length > 0) {
       throw new Error(
-        `bunorm sync: schema drift detected. Safe=${diff.safe.length}, Unsafe=${diff.unsafe.length}`
+        `foxdb sync: schema drift detected. Safe=${diff.safe.length}, Unsafe=${diff.unsafe.length}`
       );
     }
     return true;
@@ -190,8 +190,8 @@ export function applySync(
 
     if (diff.unsafe.length > 0) {
       throw new Error(
-        `bunorm sync: ${diff.unsafe.length} unsafe change(s) cannot be auto-applied. Use migrations.\n` +
-          diff.unsafe.map((c) => `  - ${c.kind}: ${JSON.stringify(c)}`).join("\n")
+        `foxdb sync: ${diff.unsafe.length} unsafe change(s) cannot be auto-applied. Use migrations.\n` +
+        diff.unsafe.map((c) => `  - ${c.kind}: ${JSON.stringify(c)}`).join("\n")
       );
     }
     return;

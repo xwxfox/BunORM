@@ -7,7 +7,7 @@
 
 import type { BunDatabase } from "./database.ts";
 import type { MetaStore } from "./meta.ts";
-import type { BunORM } from "./orm.ts";
+import type { foxdb } from "./orm.ts";
 import type { TableConfig } from "./types.ts";
 import type { TypedRelation } from "./typed-relation.ts";
 
@@ -16,7 +16,7 @@ export interface ORMContext<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > {
-  orm: BunORM<T, Rels>;
+  orm: foxdb<T, Rels>;
   db: BunDatabase;
   meta: MetaStore;
   tables: string[];
@@ -54,11 +54,11 @@ function runSyncOrLog<
       const result = h(ctx);
       if (result && isPromiseLike(result)) {
         result.catch((err: unknown) => {
-          console.error(`[bunorm] async ${label} hook error:`, err);
+          console.error(`[foxdb] async ${label} hook error:`, err);
         });
       }
     } catch (err) {
-      console.error(`[bunorm] ${label} hook error:`, err);
+      console.error(`[foxdb] ${label} hook error:`, err);
     }
   }
 }

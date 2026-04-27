@@ -1,8 +1,8 @@
 /**
- * bunorm — typed sqlite orm backed by typebox
+ * foxdb - typed sqlite orm backed by typebox
  *
  * ```ts
- * import { createORM, table } from "bunorm";
+ * import { createORM, table } from "foxdb";
  * import { Object, String } from "typebox";
  *
  * const orm = createORM({
@@ -18,12 +18,38 @@
  * ```
  */
 
-export { createORM } from "./orm.ts";
-export type { BunORM, CreateORMOptions, CreateORMBaseOptions } from "./orm.ts";
+// ─── Setup ────────────────────────────────────────────────────────────────────
 
-export { BunDatabase } from "./database.ts";
+/** @category Setup */
+export { createORM } from "./orm.ts";
+/** @category Setup */
+export type { foxdb, CreateORMOptions, CreateORMBaseOptions } from "./orm.ts";
+
+// ─── Repositories ─────────────────────────────────────────────────────────────
+
+/** @category Repositories */
 export { Repository } from "./repository.ts";
 
+// ─── Database ─────────────────────────────────────────────────────────────────
+
+/** @category Database */
+export { BunDatabase } from "./database.ts";
+/** @category Database */
+export type { BunStatement, DatabaseOptions } from "./database.ts";
+
+// ─── Schema ───────────────────────────────────────────────────────────────────
+
+/** @category Schema */
+export { table } from "./table.ts";
+/** @category Schema */
+export type { TableDescriptor, SubTableConfig, TableConfigShape } from "./table.ts";
+
+/** @category Schema */
+export type { ColumnRef, ColumnRefs, TScalarSchema } from "./columns.ts";
+
+// ─── Query Types ──────────────────────────────────────────────────────────────
+
+/** @category Query Types */
 export type {
   Infer,
   WhereClause,
@@ -35,44 +61,106 @@ export type {
   PageResult,
   TableConfig,
   IndexDefinition,
-  TableOperation,
-  BroadOperation,
-  TableEventPayload,
-  ErrorPolicy,
-  UnlinkPolicy,
+  Entity,
+  ScalarKeys,
+  SubTableKeys,
+  ScalarFilter,
 } from "./types.ts";
 
-export { table } from "./table.ts";
-export type { TableDescriptor, SubTableConfig } from "./table.ts";
+// ─── Relations ────────────────────────────────────────────────────────────────
 
-export type { ColumnRef, ColumnRefs, TScalarSchema } from "./columns.ts";
-
+/** @category Relations */
 export { createRelationBuilder } from "./relations.ts";
+/** @category Relations */
 export type { RelationBuilder } from "./relations.ts";
+/** @category Relations */
 export type { TypedRelation } from "./typed-relation.ts";
+/** @category Relations */
+export type {
+  Materialized,
+  RelationsConfig,
+  RelationEntry,
+  SubMerge,
+  ScalarMerge,
+  ScalarMergeNames,
+  ScalarMergeType,
+  SubMergeNames,
+  SubMergeType,
+  ScalarPath,
+  SubTableScalarPath,
+} from "./types.ts";
 
-export { introspectTable, buildCreateTableSQL } from "./schema.ts";
-export { MetaStore } from "./meta.ts";
-export { resolveTimestampNames, DEFAULT_TIMESTAMP_NAMES } from "./timestamps.ts";
-export type { TimestampConfig } from "./timestamps.ts";
+// ─── Events ───────────────────────────────────────────────────────────────────
 
-export { inspectSchema, inspectAllTables } from "./inspector.ts";
-export type { InspectorTable, InspectorColumn, InspectorIndex } from "./inspector.ts";
-
-export { computeDiff } from "./diff.ts";
-export type { DesiredTable } from "./diff.ts";
-
-export { applySync } from "./sync.ts";
-
-export { migrate } from "./migrate.ts";
-export { createMigration } from "./migration-template.ts";
-export type { Migration, MigrateOptions, SchemaDiff, SchemaChange, SyncPolicy } from "./types.ts";
-
+/** @category Events */
 export { EventBus } from "./events.ts";
-export type { LifecycleEventMap, ORMEvents } from "./events.ts";
+/** @category Events */
+export type { LifecycleEventMap, ORMEvents, Listener } from "./events.ts";
+/** @category Events */
+export type { TableOperation, BroadOperation, TableEventPayload, TableEventOperation } from "./types.ts";
 
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
+
+/** @category Lifecycle */
 export { LifecycleManager } from "./lifecycle.ts";
+/** @category Lifecycle */
 export type { ORMContext, LifecycleHook } from "./lifecycle.ts";
 
+// ─── Migration ────────────────────────────────────────────────────────────────
+
+/** @category Migration */
+export { migrate } from "./migrate.ts";
+/** @category Migration */
+export { createMigration } from "./migration-template.ts";
+/** @category Migration */
+export type { Migration, MigrateOptions, SchemaDiff, SchemaChange, SyncPolicy } from "./types.ts";
+
+// ─── Errors ───────────────────────────────────────────────────────────────────
+
+/** @category Errors */
 export { ORMError, raise, withTrace } from "./errors.ts";
-export type { ORMErrorContext, TraceEntry } from "./errors.ts";
+/** @category Errors */
+export type { ORMErrorContext, TraceEntry, ErrorPolicy } from "./errors.ts";
+/** @category Setup */
+export type { UnlinkPolicy } from "./types.ts";
+
+// ─── Introspection ────────────────────────────────────────────────────────────
+
+/** @category Advanced */
+export { introspectTable, buildCreateTableSQL } from "./schema.ts";
+/** @category Advanced */
+export type { TableMeta, ColumnMeta, SubTableMeta, SqliteType } from "./schema.ts";
+
+/** @category Advanced */
+export { MetaStore } from "./meta.ts";
+/** @category Advanced */
+export type { SchemaJSON } from "./meta.ts";
+/** @category Advanced */
+export { SchemaJSONSchema } from "./meta.ts";
+
+/** @category Advanced */
+export { resolveTimestampNames, DEFAULT_TIMESTAMP_NAMES } from "./timestamps.ts";
+/** @category Advanced */
+export type { TimestampConfig as TimestampNamesConfig } from "./timestamps.ts";
+
+/** @category Advanced */
+export { inspectSchema, inspectAllTables } from "./inspector.ts";
+/** @category Advanced */
+export type { InspectorTable, InspectorColumn, InspectorIndex } from "./inspector.ts";
+
+/** @category Advanced */
+export { computeDiff } from "./diff.ts";
+/** @category Advanced */
+export type { DesiredTable } from "./diff.ts";
+
+/** @category Advanced */
+export { applySync } from "./sync.ts";
+
+// ─── Internal helpers (not for public use) ────────────────────────────────────
+
+/** @category Advanced */
+export type {
+  TimestampShape,
+  ScalarProperties,
+  ArrayOfObjectProperties,
+} from "./types.ts";

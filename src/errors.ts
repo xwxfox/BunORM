@@ -42,7 +42,7 @@ export class ORMError extends Error {
   }
 }
 
-// Simple synchronous trace stack — safe because SQLite ops are single-threaded
+// Simple synchronous trace stack - safe because SQLite ops are single-threaded
 const _traceStack: TraceEntry[] = [];
 
 /** @internal */
@@ -104,7 +104,7 @@ export function handleError(
     case "emit-swallow":
       return;
     case "crash":
-      console.error("[bunorm] fatal error — crashing", err);
+      console.error("[foxdb] fatal error - crashing", err);
       process.exit(1);
     case "emit":
     case "throw":

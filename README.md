@@ -1,18 +1,18 @@
-# bunorm ~ a typed sqlite orm for bun
+# foxdb ~ a typed sqlite orm for bun
 
 > built on top of [typebox](https://github.com/sinclairzx81/typebox) schemas and `bun:sqlite`. fast, tiny, fully typed :3
 
-bunorm gives you a repository-style orm where your database schema *is* your typescript types. no codegen, no decorators, no magic. just plain typebox objects that compile to sqlite tables and give you autocomplete everywhere ~
+foxdb gives you a repository-style orm where your database schema *is* your typescript types. no codegen, no decorators, no magic. just plain typebox objects that compile to sqlite tables and give you autocomplete everywhere ~
 
 ## quick start
 
 ```bash
-bun add bunorm
+bun add foxdb
 ```
 
 ```typescript
 import { Object, String, Number, Integer } from "typebox";
-import { createORM, table } from "bunorm";
+import { createORM, table } from "foxdb";
 
 const UserSchema = Object({
   id: String(),
@@ -60,21 +60,21 @@ const page = orm.users.findPage({
 orm._close();
 ```
 
-## why bunorm
+## why foxdb
 
-- **zero codegen** — your typebox schema *is* the source of truth. no `prisma generate`, no migration files to keep in sync :3
-- **fully typed** — every query, insert, update, and relation is typed end-to-end. try passing the wrong column name and typescript will bonk you
-- **tiny** — ~2kb overhead on top of `bun:sqlite`. no external query builder, no connection pool, no bloat
-- **relations** — scalar relations (lazy) and sub-table relations (batch resolved) with a fluent builder
-- **events** — listen to table events (`insert`, `update`, `read`, `write`, etc.) typed to your schema. zero overhead unless you subscribe ~
-- **lifecycle hooks** — `onStart`, `onReady`, `onShutdown`, `onExit` for seeding, migrating, cleaning up
-- **sub-tables** — arrays of objects are automatically split into separate sqlite tables with proper indexing
+- **zero codegen** - your typebox schema *is* the source of truth. no `prisma generate`, no migration files to keep in sync :3
+- **fully typed** - every query, insert, update, and relation is typed end-to-end. try passing the wrong column name and typescript will bonk you
+- **tiny** - ~2kb overhead on top of `bun:sqlite`. no external query builder, no connection pool, no bloat
+- **relations** - scalar relations (lazy) and sub-table relations (batch resolved) with a fluent builder
+- **events** - listen to table events (`insert`, `update`, `read`, `write`, etc.) typed to your schema. zero overhead unless you subscribe ~
+- **lifecycle hooks** - `onStart`, `onReady`, `onShutdown`, `onExit` for seeding, migrating, cleaning up
+- **sub-tables** - arrays of objects are automatically split into separate sqlite tables with proper indexing
 
 ## core concepts
 
 ### schemas
 
-use [typebox](https://github.com/sinclairzx81/typebox) to define your data shape. bunorm supports all scalar types (`String`, `Number`, `Integer`, `Boolean`, `Literal`) plus arrays of objects (sub-tables).
+use [typebox](https://github.com/sinclairzx81/typebox) to define your data shape. foxdb supports all scalar types (`String`, `Number`, `Integer`, `Boolean`, `Literal`) plus arrays of objects (sub-tables).
 
 ```typescript
 import { Object, String, Number, Integer, Array, Optional } from "typebox";
@@ -113,18 +113,18 @@ table(OrderSchema, (s) => ({
 
 every table becomes a repository on the orm object. all crud methods are fully typed:
 
-- `insert(data)` — insert a record
-- `insertMany(records)` — batch insert in a transaction
-- `findById(id)` — find by primary key
-- `findMany(opts)` — query with where, orderBy, limit, offset
-- `findPage(opts)` — findMany + total count for pagination
-- `findOne(opts)` — findMany with limit 1
-- `update(data)` — merge partial data (must include pk)
-- `upsert(opts)` — insert or update on conflict
-- `deleteById(id)` — delete by pk
-- `deleteWhere(where)` — delete matching records
-- `count(where?)` — count matching records
-- `flush()` — truncate the table and sub-tables
+- `insert(data)` - insert a record
+- `insertMany(records)` - batch insert in a transaction
+- `findById(id)` - find by primary key
+- `findMany(opts)` - query with where, orderBy, limit, offset
+- `findPage(opts)` - findMany + total count for pagination
+- `findOne(opts)` - findMany with limit 1
+- `update(data)` - merge partial data (must include pk)
+- `upsert(opts)` - insert or update on conflict
+- `deleteById(id)` - delete by pk
+- `deleteWhere(where)` - delete matching records
+- `count(where?)` - count matching records
+- `flush()` - truncate the table and sub-tables
 
 ### relations
 
@@ -160,7 +160,7 @@ const off = orm._events.on("users", "insert", (e) => {
   console.log(`user ${e.data.id} inserted at ${e.timestamp}`);
 });
 
-// broad category — catches all writes (insert, update, upsert)
+// broad category - catches all writes (insert, update, upsert)
 orm._events.on("users", "write", (e) => {
   console.log(`write op: ${e.operation}`);
 });
@@ -225,7 +225,7 @@ createORM({
 
 ## error handling
 
-bunorm uses `ORMError` with invisible trace context. every throw includes the operation name, table, sql, and parameters that led to the error:
+foxdb uses `ORMError` with invisible trace context. every throw includes the operation name, table, sql, and parameters that led to the error:
 
 ```typescript
 try {
@@ -243,11 +243,11 @@ configure the error policy to crash, emit, swallow, or just throw.
 
 ## migrations
 
-bunorm can auto-run migrations on startup. create migration files and point `migrations.dir` at them:
+foxdb can auto-run migrations on startup. create migration files and point `migrations.dir` at them:
 
 ```typescript
 // migrations/001-init.ts
-import type { Migration } from "bunorm";
+import type { Migration } from "foxdb";
 
 export default {
   name: "init",

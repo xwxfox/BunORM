@@ -6,8 +6,7 @@
 
 import type { TableConfig, TableOperation, BroadOperation, TableEventOperation, TableEventPayload, Infer } from "./types.ts";
 
-/** @internal */
-type Listener = (payload: unknown) => void;
+export type Listener = (payload: unknown) => void;
 
 // ─── Typed event map ──────────────────────────────────────────────────────────
 
@@ -33,16 +32,16 @@ export type ExtractEventPayload<
   Tables extends Record<string, TableConfig<any, any, any>>
 > = K extends `${infer T}.${infer Op}`
   ? T extends keyof Tables
-    ? Op extends TableEventOperation
-      ? TableEventPayload<
-          Tables[T] extends TableConfig<infer S> ? Infer<S> : never,
-          Op
-        >
-      : never
-    : never
+  ? Op extends TableEventOperation
+  ? TableEventPayload<
+    Tables[T] extends TableConfig<infer S> ? Infer<S> : never,
+    Op
+  >
+  : never
+  : never
   : K extends keyof LifecycleEventMap
-    ? LifecycleEventMap[K]
-    : never;
+  ? LifecycleEventMap[K]
+  : never;
 
 // ─── Public events interface ──────────────────────────────────────────────────
 
@@ -99,7 +98,7 @@ export class EventBus {
         set.delete(fn);
         if (set.size === 0) {
           this.listeners.delete(event);
-          // We intentionally leave tableActive as a coarse flag — correctness
+          // We intentionally leave tableActive as a coarse flag - correctness
           // is guaranteed by the final has() check inside emit().
         }
       }
@@ -113,7 +112,7 @@ export class EventBus {
         try {
           fn(payload);
         } catch (err) {
-          console.error(`[bunorm] event listener error for "${event}":`, err);
+          console.error(`[foxdb] event listener error for "${event}":`, err);
         }
       }
     }
@@ -129,7 +128,7 @@ export class EventBus {
           try {
             fn(payload);
           } catch (err) {
-            console.error(`[bunorm] event listener error for "${wildcard}":`, err);
+            console.error(`[foxdb] event listener error for "${wildcard}":`, err);
           }
         }
       }

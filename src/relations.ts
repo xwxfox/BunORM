@@ -1,5 +1,5 @@
 /**
- * bunorm/src/relations.ts
+ * foxdb/src/relations.ts
  * Type-safe relation builder. Constrains ownerField and targetField
  * to actual columns in the respective table schemas.
  */
@@ -13,7 +13,7 @@ export class RelationBuilder<
 > {
   private readonly relations: TypedRelation[] = [];
 
-  constructor(private readonly tables: Tables) {}
+  constructor(private readonly tables: Tables) { }
 
   from<Owner extends keyof Tables & string>(ownerTable: Owner) {
     const _ownerTable = ownerTable;

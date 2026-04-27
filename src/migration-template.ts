@@ -1,5 +1,5 @@
 /**
- * bunorm/src/migration-template.ts
+ * foxdb/src/migration-template.ts
  * Generates new migration files with Prisma-style boilerplate.
  */
 
@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 // ─── Template ─────────────────────────────────────────────────────────────────
 
 function migrationTemplate(name: string, date: string): string {
-  return `import type { Migration } from "bunorm";
+  return `import type { Migration } from "foxdb";
 
 export default {
   name: "${name}",

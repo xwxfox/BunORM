@@ -1,5 +1,5 @@
 /**
- * bunorm/tests/migrate.test.ts
+ * foxdb/tests/migrate.test.ts
  * Tests for migration file generation and runner.
  */
 
@@ -87,7 +87,7 @@ describe("migrate runner", () => {
     });
 
     const checkDb = new BunDatabase({ path: dbPath });
-    const applied = checkDb.prepare('SELECT "name" FROM "_bunorm_migrations" ORDER BY "name"').all() as Array<{ name: string }>;
+    const applied = checkDb.prepare('SELECT "name" FROM "_foxdb_migrations" ORDER BY "name"').all() as Array<{ name: string }>;
     checkDb.close();
 
     expect(applied).toHaveLength(2);
@@ -121,7 +121,7 @@ describe("migrate runner", () => {
     });
 
     const checkDb = new BunDatabase({ path: dbPath });
-    const applied = checkDb.prepare('SELECT "name" FROM "_bunorm_migrations" ORDER BY "name"').all() as Array<{ name: string }>;
+    const applied = checkDb.prepare('SELECT "name" FROM "_foxdb_migrations" ORDER BY "name"').all() as Array<{ name: string }>;
     checkDb.close();
 
     expect(applied).toHaveLength(1);
@@ -152,7 +152,7 @@ describe("migrate runner", () => {
     await orm._migrate();
 
     const checkDb = new BunDatabase({ path: dbPath });
-    const applied = checkDb.prepare('SELECT "name" FROM "_bunorm_migrations" ORDER BY "name"').all() as Array<{ name: string }>;
+    const applied = checkDb.prepare('SELECT "name" FROM "_foxdb_migrations" ORDER BY "name"').all() as Array<{ name: string }>;
     checkDb.close();
 
     expect(applied).toHaveLength(1);

@@ -1,5 +1,5 @@
 /**
- * bunorm/tests/diff.test.ts
+ * foxdb/tests/diff.test.ts
  * Tests for the schema diff engine.
  */
 
@@ -21,7 +21,7 @@ function actual(name: string, columns: InspectorTable["columns"], indexes?: Insp
 }
 
 describe("computeDiff", () => {
-  test("empty actual — all tables are safe add", () => {
+  test("empty actual - all tables are safe add", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -36,7 +36,7 @@ describe("computeDiff", () => {
     expect(diff.unsafe).toHaveLength(0);
   });
 
-  test("matching schema — no changes", () => {
+  test("matching schema - no changes", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -55,7 +55,7 @@ describe("computeDiff", () => {
     expect(diff.unsafe).toHaveLength(0);
   });
 
-  test("missing nullable column — safe add", () => {
+  test("missing nullable column - safe add", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -74,7 +74,7 @@ describe("computeDiff", () => {
     expect(diff.unsafe).toHaveLength(0);
   });
 
-  test("missing required column — unsafe add", () => {
+  test("missing required column - unsafe add", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -93,7 +93,7 @@ describe("computeDiff", () => {
     expect(diff.safe).toHaveLength(0);
   });
 
-  test("type mismatch — unsafe change-type", () => {
+  test("type mismatch - unsafe change-type", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -112,7 +112,7 @@ describe("computeDiff", () => {
     expect(diff.unsafe[0]!.kind).toBe("change-type");
   });
 
-  test("notnull → nullable — safe change-nullable", () => {
+  test("notnull → nullable - safe change-nullable", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -132,7 +132,7 @@ describe("computeDiff", () => {
     expect(diff.unsafe).toHaveLength(0);
   });
 
-  test("nullable → notnull — unsafe change-nullable", () => {
+  test("nullable → notnull - unsafe change-nullable", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -152,7 +152,7 @@ describe("computeDiff", () => {
     expect(diff.safe).toHaveLength(0);
   });
 
-  test("extra column in actual — unsafe drop-column", () => {
+  test("extra column in actual - unsafe drop-column", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -170,7 +170,7 @@ describe("computeDiff", () => {
     expect(diff.unsafe[0]!.kind).toBe("drop-column");
   });
 
-  test("missing index — safe add-index", () => {
+  test("missing index - safe add-index", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -189,7 +189,7 @@ describe("computeDiff", () => {
     expect(diff.safe[0]!.kind).toBe("add-index");
   });
 
-  test("pk mismatch — unsafe change-pk", () => {
+  test("pk mismatch - unsafe change-pk", () => {
     const d: DesiredTable[] = [
       desired("users", [
         { name: "id", sqlType: "TEXT", nullable: false, optional: false },
@@ -208,7 +208,7 @@ describe("computeDiff", () => {
     expect(diff.unsafe[0]!.kind).toBe("change-pk");
   });
 
-  test("extra table in actual — unsafe drop-table", () => {
+  test("extra table in actual - unsafe drop-table", () => {
     const d: DesiredTable[] = [
       desired("users", [{ name: "id", sqlType: "TEXT", nullable: false, optional: false }]),
     ];
@@ -222,7 +222,7 @@ describe("computeDiff", () => {
     expect(diff.unsafe[0]!.kind).toBe("drop-table");
   });
 
-  test("sub-table missing — safe add-subtable", () => {
+  test("sub-table missing - safe add-subtable", () => {
     const d: DesiredTable[] = [
       desired("sales", [{ name: "id", sqlType: "TEXT", nullable: false, optional: false }]),
       desired("sales__lineItems", [

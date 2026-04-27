@@ -1,7 +1,10 @@
 node_modules
-BunORM*.tgz
+foxdb*.tgz
 yarn-error.log
 *.sqlite
 *.db
 *.db-wal
 *.db-shm
+docs/.vitepress/dist
+docs/.vitepress/cache
+docs/api

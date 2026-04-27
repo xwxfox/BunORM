@@ -1,5 +1,5 @@
 /**
- * bunorm/src/columns.ts
+ * foxdb/src/columns.ts
  * Builds a typed proxy from a TypeBox TObject so that schema.sku returns
  * a ColumnRef whose type encodes the exact column name.
  */
@@ -37,11 +37,11 @@ export interface ColumnRef<N extends string = string, S extends TScalarSchema = 
 
 /** map of scalar columns to their typed refs */
 export type ColumnRefs<T extends TObject> = {
-  readonly [K in keyof T["properties"] as T["properties"][K] extends TScalarSchema
-    ? K
-    : never]: T["properties"][K] extends TScalarSchema
-    ? ColumnRef<K & string, T["properties"][K]>
-    : never;
+  readonly [K in keyof T["properties"]as T["properties"][K] extends TScalarSchema
+  ? K
+  : never]: T["properties"][K] extends TScalarSchema
+  ? ColumnRef<K & string, T["properties"][K]>
+  : never;
 };
 
 /** @internal */

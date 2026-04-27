@@ -4,7 +4,7 @@ import { Object, String } from "typebox";
 import { createORM, table } from "../src/index.ts";
 
 const UserSchema = Object({ id: String(), name: String() });
-const tmpDb = "/tmp/bunorm_qol_test.db";
+const tmpDb = "/tmp/foxdb_qol_test.db";
 
 describe("QoL options", () => {
   afterEach(() => {

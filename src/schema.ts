@@ -1,6 +1,6 @@
 /**
- * bunorm/src/schema.ts
- * Runtime schema introspection — walks TObject properties and produces
+ * foxdb/src/schema.ts
+ * Runtime schema introspection - walks TObject properties and produces
  * the SQL column/table DDL as well as the flatten/hydrate mappings.
  * Uses typebox 1.x guard functions (IsObject, IsArray, etc.)
  */
@@ -54,7 +54,7 @@ export interface TableMeta {
 function unwrapOptional(schema: TSchema): { schema: TSchema; optional: boolean } {
   // In typebox 1.x optional is a brand on the schema itself
   if (IsOptional(schema)) {
-    // Optional wraps the inner schema — we treat the inner schema for type mapping
+    // Optional wraps the inner schema - we treat the inner schema for type mapping
     // The '~optional' brand is on the schema, not a wrapper object
     return { schema, optional: true };
   }
@@ -72,7 +72,7 @@ function schemaToSqlType(schema: TSchema): SqliteType {
     if (typeof v === "boolean") return "INTEGER";
     return "TEXT";
   }
-  // Fallback — JSON-encode anything complex that slips through
+  // Fallback - JSON-encode anything complex that slips through
   return "TEXT";
 }
 
@@ -153,7 +153,7 @@ export function buildCreateTableSQL(
     `CREATE TABLE IF NOT EXISTS "${meta.tableName}" (\n${colDefs.join(",\n")}\n)`
   );
 
-  // Sub-tables — each gets an auto _rowid_ and a FK back to owner
+  // Sub-tables - each gets an auto _rowid_ and a FK back to owner
   for (const sub of meta.subTables) {
     const subCols = [
       `  "_id" INTEGER PRIMARY KEY AUTOINCREMENT`,
@@ -275,7 +275,7 @@ export function hydrateRow(
         obj[col.name] = v;
       }
     } else if (col.sqlType === "INTEGER" && typeof v === "number") {
-      // Detect boolean columns by checking if schema says boolean — fallback: keep as number
+      // Detect boolean columns by checking if schema says boolean - fallback: keep as number
       // We'll leave this as-is; codec layer can handle it if needed
       obj[col.name] = v;
     } else {

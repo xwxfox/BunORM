@@ -1,0 +1,80 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "foxdb",
+  "entryPoints": ["src/index.ts"],
+  "out": "docs/api",
+  "tsconfig": "tsconfig.json",
+  "readme": "README.md",
+  "includeVersion": true,
+  "sort": ["kind", "instance-first", "alphabetical"],
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true,
+    "includeFolders": true
+  },
+  "categorizeByGroup": false,
+  "defaultCategory": "Other",
+  "categoryOrder": [
+    "Setup",
+    "Repositories",
+    "Schema",
+    "Query Types",
+    "Relations",
+    "Events",
+    "Lifecycle",
+    "Migration",
+    "Errors",
+    "Database",
+    "Advanced",
+    "*"
+  ],
+  "searchInComments": true,
+  "searchInDocuments": true,
+  "useFirstParagraphOfCommentAsSummary": true,
+  "plugin": [
+    "typedoc-plugin-markdown",
+    "typedoc-vitepress-theme",
+    "typedoc-plugin-coverage",
+    "typedoc-plugin-mdn-links"
+  ],
+
+  "theme": "markdown",
+  "hidePageHeader": true,
+  "entryFileName": "index.md",
+  "docsRoot": "./docs",
+  "router": "category",
+  "sidebar": {
+    "autoConfiguration": true,
+    "collapsed": true,
+    "pretty": true
+  },
+
+  "useCodeBlocks": true,
+  "expandObjects": true,
+  "expandParameters": true,
+  "formatWithPrettier": false,
+  "parametersFormat": "table",
+  "interfacePropertiesFormat": "table",
+  "classPropertiesFormat": "table",
+  "typeAliasPropertiesFormat": "table",
+  "enumMembersFormat": "table",
+  "propertyMembersFormat": "table",
+  "typeDeclarationFormat": "table",
+  "indexFormat": "table",
+
+  "navigationLinks": {
+    "GitHub": "https://github.com/xwxfox/foxdb"
+  },
+  "lang": "en",
+  "markdownLinkExternal": true,
+  "sourceLinkExternal": true,
+  "excludeExternals": true,
+  "excludeInternal": false,
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "validation": {
+    "notExported": false,
+    "invalidLink": false,
+    "notDocumented": false
+  }
+}

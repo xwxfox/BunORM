@@ -1,6 +1,6 @@
 /**
- * bunorm/src/database.ts
- * Database connection manager — WAL mode, pragma tuning, migration/sync,
+ * foxdb/src/database.ts
+ * Database connection manager - WAL mode, pragma tuning, migration/sync,
  * and the prepared-statement cache.
  */
 
@@ -21,7 +21,7 @@ export interface BunStatement {
 
 // ─── Pragma defaults ──────────────────────────────────────────────────────────
 
-interface DatabaseOptions {
+export interface DatabaseOptions {
   /** Path to the SQLite file. Defaults to ":memory:" */
   path?: string;
   /**
@@ -44,7 +44,7 @@ interface DatabaseOptions {
   mmapSize?: number;
 }
 
-// ─── BunORM Database ──────────────────────────────────────────────────────────
+// ─── foxdb Database ──────────────────────────────────────────────────────────
 
 /** sqlite database with statement caching and pragma tuning */
 export class BunDatabase {
@@ -55,7 +55,7 @@ export class BunDatabase {
     const path = opts.path ?? ":memory:";
     this.db = new Database(path, { create: true });
 
-    // WAL mode — must be set before anything else
+    // WAL mode - must be set before anything else
     this.db.run("PRAGMA journal_mode = WAL;");
 
     // Performance + safety pragmas
@@ -94,7 +94,7 @@ export class BunDatabase {
       this.db.fileControl(constants.SQLITE_FCNTL_PERSIST_WAL, 0);
       this.db.run("PRAGMA wal_checkpoint(TRUNCATE);");
     } catch {
-      // Best-effort — ignore if already closed or in-memory
+      // Best-effort - ignore if already closed or in-memory
     }
     this.db.close();
   }

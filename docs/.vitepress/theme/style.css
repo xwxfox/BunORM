@@ -1,0 +1,330 @@
+/**
+ * foxdb VitePress Theme
+ * Pastel dark mode with lavender, pink, mint, and blue accents
+ */
+
+/* ─── CSS Variables ─── */
+:root {
+  --vp-c-bg: #0f0f1a;
+  --vp-c-bg-alt: #13132a;
+  --vp-c-bg-elv: #1a1a3e;
+  --vp-c-bg-soft: #1e1e45;
+
+  --vp-c-border: #2a2a5a;
+  --vp-c-divider: #2a2a5a;
+  --vp-c-gutter: #1e1e45;
+
+  --vp-c-text-1: #e2e8f0;
+  --vp-c-text-2: #a3b2cc;
+  --vp-c-text-3: #6b7280;
+
+  --vp-c-brand-1: #c4b5fd;
+  --vp-c-brand-2: #a78bfa;
+  --vp-c-brand-3: #8b5cf6;
+  --vp-c-brand-soft: rgba(196, 181, 253, 0.12);
+
+  --vp-c-tip-1: #86efac;
+  --vp-c-tip-2: #4ade80;
+  --vp-c-tip-3: #22c55e;
+  --vp-c-tip-soft: rgba(134, 239, 172, 0.1);
+
+  --vp-c-warning-1: #fdba74;
+  --vp-c-warning-2: #fb923c;
+  --vp-c-warning-3: #f97316;
+  --vp-c-warning-soft: rgba(253, 186, 116, 0.1);
+
+  --vp-c-danger-1: #fca5a5;
+  --vp-c-danger-2: #f87171;
+  --vp-c-danger-3: #ef4444;
+  --vp-c-danger-soft: rgba(252, 165, 165, 0.1);
+
+  --vp-c-default-soft: rgba(196, 181, 253, 0.08);
+
+  --vp-button-brand-bg: #8b5cf6;
+  --vp-button-brand-hover-bg: #7c3aed;
+  --vp-button-brand-active-bg: #6d28d9;
+
+  --vp-custom-block-tip-bg: var(--vp-c-tip-soft);
+  --vp-custom-block-tip-border: var(--vp-c-tip-1);
+  --vp-custom-block-tip-text: var(--vp-c-tip-1);
+
+  --vp-custom-block-warning-bg: var(--vp-c-warning-soft);
+  --vp-custom-block-warning-border: var(--vp-c-warning-1);
+  --vp-custom-block-warning-text: var(--vp-c-warning-1);
+
+  --vp-custom-block-danger-bg: var(--vp-c-danger-soft);
+  --vp-custom-block-danger-border: var(--vp-c-danger-1);
+  --vp-custom-block-danger-text: var(--vp-c-danger-1);
+
+  --vp-custom-block-info-bg: var(--vp-c-brand-soft);
+  --vp-custom-block-info-border: var(--vp-c-brand-1);
+  --vp-custom-block-info-text: var(--vp-c-brand-1);
+
+  --vp-badge-tip-bg: var(--vp-c-tip-soft);
+  --vp-badge-tip-text: var(--vp-c-tip-1);
+
+  --vp-badge-warning-bg: var(--vp-c-warning-soft);
+  --vp-badge-warning-text: var(--vp-c-warning-1);
+
+  --vp-badge-danger-bg: var(--vp-c-danger-soft);
+  --vp-badge-danger-text: var(--vp-c-danger-1);
+
+  --vp-code-color: #f9a8d4;
+  --vp-code-bg: #13132a;
+  --vp-code-block-bg: #0f0f1a;
+  --vp-code-block-divider-color: #2a2a5a;
+
+  --vp-nav-bg-color: rgba(15, 15, 26, 0.85);
+  --vp-nav-screen-bg-color: #0f0f1a;
+
+  --vp-local-nav-bg-color: rgba(15, 15, 26, 0.85);
+
+  --vp-sidebar-bg-color: #13132a;
+
+  --vp-font-family-base: "Inter", "SF Pro Display", -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --vp-font-family-mono: "JetBrains Mono", "Fira Code", "SF Mono", Consolas,
+    monospace;
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: rgba(196, 181, 253, 0.25);
+  color: #fff;
+}
+
+/* ─── Links ─── */
+.VPDoc a {
+  color: #93c5fd;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.VPDoc a:hover {
+  color: #c4b5fd;
+  text-decoration: underline;
+}
+
+/* ─── Custom block styling ─── */
+.vp-doc .custom-block.tip {
+  border-color: var(--vp-c-tip-1);
+  background: var(--vp-c-tip-soft);
+}
+.vp-doc .custom-block.warning {
+  border-color: var(--vp-c-warning-1);
+  background: var(--vp-c-warning-soft);
+}
+.vp-doc .custom-block.danger {
+  border-color: var(--vp-c-danger-1);
+  background: var(--vp-c-danger-soft);
+}
+.vp-doc .custom-block.info {
+  border-color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft);
+}
+
+/* ─── Code blocks ─── */
+.vp-doc div[class*="language-"] {
+  border-radius: 14px;
+  border: 1px solid #2a2a5a;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.vp-doc div[class*="language-"] code {
+  font-family: var(--vp-font-family-mono);
+}
+
+/* ─── Inline code ─── */
+.vp-doc :not(pre) > code {
+  color: #f9a8d4;
+  background: #1a1a3e;
+  border: 1px solid #2a2a5a;
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+}
+
+/* ─── Tables ─── */
+.vp-doc table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #2a2a5a;
+}
+
+.vp-doc th {
+  background: #1a1a3e;
+  color: #c4b5fd;
+  font-weight: 600;
+  border-bottom: 1px solid #2a2a5a;
+}
+
+.vp-doc td {
+  border-bottom: 1px solid #2a2a5a;
+}
+
+.vp-doc tr:last-child td {
+  border-bottom: none;
+}
+
+/* ─── Blockquotes ─── */
+.vp-doc blockquote {
+  background: rgba(147, 197, 253, 0.06);
+  border-left: 3px solid #93c5fd;
+  border-radius: 0 12px 12px 0;
+  padding: 1rem 1.25rem;
+}
+
+/* ─── Headings ─── */
+.vp-doc h1 {
+  color: #c4b5fd;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.vp-doc h2 {
+  color: #f9a8d4;
+  font-weight: 700;
+  border-top: 1px solid #2a2a5a;
+  padding-top: 1.5rem;
+}
+
+.vp-doc h3 {
+  color: #86efac;
+  font-weight: 600;
+}
+
+.vp-doc h4 {
+  color: #fdba74;
+}
+
+/* ─── Navbar ─── */
+.VPNav {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.VPNavBarTitle .title {
+  color: #c4b5fd !important;
+  font-weight: 700;
+}
+
+/* ─── Sidebar ─── */
+.VPSidebar {
+  background: #13132a;
+  border-right: 1px solid #1e1e45;
+}
+
+.VPSidebarItem .text {
+  color: #a3b2cc;
+}
+
+.VPSidebarItem.is-link .text {
+  color: #e2e8f0;
+}
+
+.VPSidebarItem.is-active .text {
+  color: #c4b5fd;
+  font-weight: 600;
+}
+
+.VPSidebarItem.is-active .indicator {
+  background: #c4b5fd;
+}
+
+/* ─── Search modal ─── */
+.VPLocalSearchBox .backdrop {
+  background: rgba(15, 15, 26, 0.8);
+  backdrop-filter: blur(4px);
+}
+
+.VPLocalSearchBox .shell {
+  background: #1a1a3e;
+  border: 1px solid #2a2a5a;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.VPLocalSearchBox .search-input {
+  background: #13132a;
+  border: 1px solid #2a2a5a;
+  border-radius: 10px;
+  color: #e2e8f0;
+}
+
+.VPLocalSearchBox .result.selected {
+  background: rgba(196, 181, 253, 0.1);
+  border-radius: 8px;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0f0f1a;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a5a;
+  border-radius: 5px;
+  border: 2px solid #0f0f1a;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c4b5fd;
+}
+
+/* ─── Footer ─── */
+.VPFooter {
+  border-top: 1px solid #1e1e45;
+}
+
+/* ─── Home page ─── */
+.VPHero .name {
+  color: #c4b5fd;
+  text-shadow: 0 0 30px rgba(196, 181, 253, 0.2);
+}
+
+.VPHero .text {
+  color: #e2e8f0;
+}
+
+.VPHero .tagline {
+  color: #a3b2cc;
+}
+
+.VPButton.brand {
+  background: linear-gradient(135deg, #8b5cf6, #c4b5fd);
+  border: none;
+  color: #0f0f1a;
+  font-weight: 700;
+}
+
+.VPButton.alt {
+  border-color: #2a2a5a;
+  color: #a3b2cc;
+}
+
+.VPButton.alt:hover {
+  border-color: #c4b5fd;
+  color: #c4b5fd;
+}
+
+/* ─── Badges ─── */
+.VPBadge {
+  border-radius: 20px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ─── API docs specific ─── */
+.vp-doc pre {
+  background: #0f0f1a !important;
+}
+
+/* Smooth transitions for theme toggle */
+.VPSwitchAppearance .check {
+  background: #2a2a5a;
+}

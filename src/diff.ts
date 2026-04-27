@@ -1,6 +1,6 @@
 /**
- * bunorm/src/diff.ts
- * Schema diff engine — compares desired schema with actual SQLite schema.
+ * foxdb/src/diff.ts
+ * Schema diff engine - compares desired schema with actual SQLite schema.
  */
 
 import type { ColumnMeta } from "./schema.ts";
@@ -22,7 +22,7 @@ function normalizeType(t: string): string {
   return t.toUpperCase().trim();
 }
 
-/** SQLite type affinity — treats VARCHAR, CHAR, CLOB as TEXT, etc. */
+/** SQLite type affinity - treats VARCHAR, CHAR, CLOB as TEXT, etc. */
 function affinityType(t: string): string {
   const upper = normalizeType(t);
   if (upper.includes("INT")) return "INTEGER";
@@ -71,11 +71,13 @@ export function computeDiff(desired: DesiredTable[], actual: InspectorTable[]): 
     if (!at) {
       // Table doesn't exist yet
       if (dt.name.includes("__")) {
-        safe.push({ kind: "add-subtable", table: dt.name.split("__")[0]!, subTable: {
-          fieldName: dt.name.split("__")[1]!,
-          tableName: dt.name,
-          columns: dt.columns.map((c) => ({ name: c.name, sqlType: c.sqlType, nullable: c.nullable, optional: c.optional })),
-        }});
+        safe.push({
+          kind: "add-subtable", table: dt.name.split("__")[0]!, subTable: {
+            fieldName: dt.name.split("__")[1]!,
+            tableName: dt.name,
+            columns: dt.columns.map((c) => ({ name: c.name, sqlType: c.sqlType, nullable: c.nullable, optional: c.optional })),
+          }
+        });
       } else {
         safe.push({ kind: "add-table", table: dt.name });
       }
@@ -88,19 +90,23 @@ export function computeDiff(desired: DesiredTable[], actual: InspectorTable[]): 
       if (!ac) {
         // New column
         if (dc.nullable) {
-          safe.push({ kind: "add-column", table: dt.name, column: {
-            name: dc.name,
-            sqlType: dc.sqlType,
-            nullable: dc.nullable,
-            optional: dc.optional,
-          }, hasDefault: false });
+          safe.push({
+            kind: "add-column", table: dt.name, column: {
+              name: dc.name,
+              sqlType: dc.sqlType,
+              nullable: dc.nullable,
+              optional: dc.optional,
+            }, hasDefault: false
+          });
         } else {
-          unsafe.push({ kind: "add-column", table: dt.name, column: {
-            name: dc.name,
-            sqlType: dc.sqlType,
-            nullable: dc.nullable,
-            optional: dc.optional,
-          }, hasDefault: false });
+          unsafe.push({
+            kind: "add-column", table: dt.name, column: {
+              name: dc.name,
+              sqlType: dc.sqlType,
+              nullable: dc.nullable,
+              optional: dc.optional,
+            }, hasDefault: false
+          });
         }
         continue;
       }
@@ -143,11 +149,13 @@ export function computeDiff(desired: DesiredTable[], actual: InspectorTable[]): 
     const actualUserIndexes = at.indexes.filter((idx) => !idx.name.startsWith("sqlite_") && !idx.name.startsWith("idx_sqlite_"));
     for (const di of dt.indexes) {
       if (!findIndex(at, di.columns, di.unique ?? false)) {
-        safe.push({ kind: "add-index", table: dt.name, index: {
-          name: di.name ?? `idx_${dt.name}__${di.columns.join("_")}`,
-          unique: di.unique ? 1 : 0,
-          columns: di.columns,
-        }});
+        safe.push({
+          kind: "add-index", table: dt.name, index: {
+            name: di.name ?? `idx_${dt.name}__${di.columns.join("_")}`,
+            unique: di.unique ? 1 : 0,
+            columns: di.columns,
+          }
+        });
       }
     }
 

@@ -1,7 +1,7 @@
 /**
- * bunorm/src/query-builder.ts
+ * foxdb/src/query-builder.ts
  * Builds parameterized SQL from typed WhereClause / OrderBy / pagination.
- * Never does string interpolation of user values — always uses ? placeholders.
+ * Never does string interpolation of user values - always uses ? placeholders.
  */
 
 import type { TObject } from "typebox";
@@ -16,7 +16,7 @@ import { raise } from "./errors.ts";
 
 type FilterEntry = { sql: string; params: unknown[] };
 
-/** Runtime shape of any filter — independent of the column's value type */
+/** Runtime shape of any filter - independent of the column's value type */
 type FilterShape =
   | { eq: unknown }
   | { ne: unknown }
@@ -59,7 +59,7 @@ function buildFilter(column: string, filter: FilterShape): FilterEntry {
   }
   if ("isNull" in filter) return { sql: `"${column}" IS NULL`, params: [] };
   if ("isNotNull" in filter) return { sql: `"${column}" IS NOT NULL`, params: [] };
-  raise("UNKNOWN_FILTER", `bunorm: unknown filter operator for column "${column}"`, { column });
+  raise("UNKNOWN_FILTER", `foxdb: unknown filter operator for column "${column}"`, { column });
 }
 
 export interface WhereResult {
@@ -210,7 +210,7 @@ export function buildUpdate<T extends TObject>(
 ): { sql: string; params: unknown[] } {
   const entries = Object.entries(patch).filter(([k]) => k !== pk);
   if (entries.length === 0) {
-    raise("NO_COLUMNS_TO_UPDATE", "bunorm: no columns to update", { table: tableName });
+    raise("NO_COLUMNS_TO_UPDATE", "foxdb: no columns to update", { table: tableName });
   }
   const sets = entries.map(([k]) => `"${k}" = ?`).join(", ");
   return {

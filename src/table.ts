@@ -1,5 +1,5 @@
 /**
- * bunorm/src/table.ts
+ * foxdb/src/table.ts
  * User-facing helper that wraps a schema + configuration into a descriptor.
  * Guarantees compile-time safety for PK and index columns via ColumnRef.
  */
@@ -17,17 +17,30 @@ export interface TableDescriptor<
   T extends TObject,
   PK extends string,
   TS extends TimestampConfig = undefined
-> extends TableConfig<T, PK, TS> {}
+> extends TableConfig<T, PK, TS> { }
 
-/** @internal */
-interface TableConfigShape<PK extends string, TS extends TimestampConfig> {
+export interface TableConfigShape<PK extends string, TS extends TimestampConfig> {
   primaryKey: ColumnRef<PK>;
   indexes?: IndexDefinition[];
   subTables?: Partial<Record<string, SubTableConfig>>;
   timestamps?: TS;
 }
 
-/** describe a table schema + config for createORM */
+/**
+ * Describe a table schema + config for `createORM`.
+ *
+ * @example
+ * ```ts
+ * const UserSchema = Object({ id: String(), name: String(), email: String() });
+ *
+ * const users = table(UserSchema, (s) => ({
+ *   primaryKey: s.id,
+ *   indexes: [{ columns: [s.email], unique: true }],
+ *   timestamps: true, // adds createdAt / updatedAt
+ * }));
+ * ```
+ * @category Schema
+ */
 export function table<
   T extends TObject,
   PK extends string,

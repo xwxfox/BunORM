@@ -1,6 +1,6 @@
 /**
- * bunorm/src/meta.ts
- * TypeBox-backed metadata store for BunORM.
+ * foxdb/src/meta.ts
+ * TypeBox-backed metadata store for foxdb.
  *
  * Zero tolerance for type casts (`as`), `unknown`, or untyped strings.
  * Every DB row is validated at runtime with Schema.Compile.
@@ -27,9 +27,9 @@ type MetaRecord = Static<typeof MetaRecordSchema>;
 
 const SchemaHashSchema = Type.String();
 
-// Stored schema JSON is Record<string, TObject> — we can't deeply validate
+// Stored schema JSON is Record<string, TObject> - we can't deeply validate
 // TypeBox schemas at runtime without the compiler, so we accept any object.
-const SchemaJSONSchema = Type.Record(Type.String(), Type.Unknown());
+export const SchemaJSONSchema = Type.Record(Type.String(), Type.Unknown());
 
 const TablesSchema = Type.Array(Type.String());
 
@@ -54,7 +54,7 @@ const RelationsCompiled = Schema.Compile(RelationsSchema);
 const VersionCompiled = Schema.Compile(VersionSchema);
 
 type SchemaHash = Static<typeof SchemaHashSchema>;
-type SchemaJSON = Static<typeof SchemaJSONSchema>;
+export type SchemaJSON = Static<typeof SchemaJSONSchema>;
 type TablesList = Static<typeof TablesSchema>;
 type RelationsList = Static<typeof RelationsSchema>;
 type Version = Static<typeof VersionSchema>;
@@ -79,7 +79,7 @@ export class MetaStore {
   constructor(db: BunDatabase) {
     this.db = db;
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS _bunorm_meta (
+      CREATE TABLE IF NOT EXISTS _foxdb_meta (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
         encoding TEXT NOT NULL,
@@ -92,7 +92,7 @@ export class MetaStore {
 
   private getRow(key: string): MetaRecord | null {
     const stmt = this.db.prepare(
-      "SELECT key, value, encoding, updatedAt FROM _bunorm_meta WHERE key = ?"
+      "SELECT key, value, encoding, updatedAt FROM _foxdb_meta WHERE key = ?"
     );
     const raw = stmt.get(key);
     if (raw == null) return null;
@@ -109,7 +109,7 @@ export class MetaStore {
 
   private setRow(key: string, value: string, encoding: string): void {
     const stmt = this.db.prepare(`
-      INSERT INTO _bunorm_meta (key, value, encoding, updatedAt)
+      INSERT INTO _foxdb_meta (key, value, encoding, updatedAt)
       VALUES (?, ?, ?, ?)
       ON CONFLICT (key) DO UPDATE SET
         value = excluded.value,
@@ -200,7 +200,7 @@ export class MetaStore {
   // ─── Delete ─────────────────────────────────────────────────────────────────
 
   delete(key: string): void {
-    const stmt = this.db.prepare("DELETE FROM _bunorm_meta WHERE key = ?");
+    const stmt = this.db.prepare("DELETE FROM _foxdb_meta WHERE key = ?");
     stmt.run(key);
   }
 

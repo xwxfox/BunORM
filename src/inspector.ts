@@ -1,6 +1,6 @@
 /**
- * bunorm/src/inspector.ts
- * Schema inspector — reads actual SQLite schema via PRAGMA and sqlite_master.
+ * foxdb/src/inspector.ts
+ * Schema inspector - reads actual SQLite schema via PRAGMA and sqlite_master.
  */
 
 import { BunDatabase } from "./database.ts";
@@ -31,7 +31,7 @@ export interface InspectorTable {
 
 function listUserTables(db: BunDatabase): string[] {
   const stmt = db.prepare(
-    `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_bunorm_%' ORDER BY name`
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_foxdb_%' ORDER BY name`
   );
   const rows = stmt.all() as Array<{ name: string }>;
   return rows.map((r) => r.name);

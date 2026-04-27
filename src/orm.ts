@@ -1,6 +1,6 @@
 /**
- * bunorm/src/orm.ts
- * Top-level ORM — creates repositories, manages cross-table relations,
+ * foxdb/src/orm.ts
+ * Top-level ORM - creates repositories, manages cross-table relations,
  * and exposes the materializer for eager loading.
  */
 
@@ -33,9 +33,12 @@ import { unlinkDbFiles } from "./database.ts";
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 
-/** base options for opening a sqlite database */
+/**
+ * Base options for opening a SQLite database.
+ * @category Setup
+ */
 export interface CreateORMBaseOptions {
-  /** file path — defaults to ":memory:" */
+  /** file path - defaults to ":memory:" */
   path?: string;
   cacheSize?: number;
   busyTimeout?: number;
@@ -43,7 +46,34 @@ export interface CreateORMBaseOptions {
   mmapSize?: number;
 }
 
-/** options passed to createORM */
+/**
+ * Options passed to `createORM`.
+ *
+ * @category Setup
+ *
+ * @example
+ * ```ts
+ * const orm = createORM({
+ *   path: "app.db",
+ *   tables: {
+ *     users: table(UserSchema, (s) => ({
+ *       primaryKey: s.id,
+ *       indexes: [{ columns: [s.email] }],
+ *       timestamps: true,
+ *     })),
+ *   },
+ *   relations: (r) => [
+ *     r.from("users").scalar("profileId").to("profiles", "id"),
+ *   ],
+ *   seed: (o) => {
+ *     o.users.insert({ id: "1", name: "alice" });
+ *   },
+ *   onReady: () => console.log("db ready"),
+ *   autoMigrate: true,
+ *   migrations: { dir: "./migrations" },
+ * });
+ * ```
+ */
 export interface CreateORMOptions<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
@@ -69,7 +99,7 @@ export interface CreateORMOptions<
   /** run pending migrations on startup */
   autoMigrate?: boolean;
   /** seed data after sync */
-  seed?: (orm: BunORM<T, Rels>) => void;
+  seed?: (orm: foxdb<T, Rels>) => void;
   /** wipe and recreate the db on every launch */
   rebuildOnLaunch?: boolean;
   /** flush these tables before seed */
@@ -92,8 +122,56 @@ export interface CreateORMOptions<
 
 // ─── ORM return type ──────────────────────────────────────────────────────────
 
-/** the orm object returned by createORM — typed repositories + framework apis */
-export type BunORM<
+/**
+ * The ORM object returned by `createORM`.
+ *
+ * Every key in your `tables` config becomes a fully typed **Repository**
+ * with CRUD methods. The type definition below is a mapped type that
+ * transforms your schema config into the actual runtime API — TypeDoc
+ * cannot expand it, so see the example for how it works in practice.
+ *
+ * @see {@link Repository} for the full method reference
+ *
+ * @category Setup
+ *
+ * @example
+ * ```ts
+ * const orm = createORM({
+ *   tables: {
+ *     users: table(UserSchema, (s) => ({ primaryKey: s.id })),
+ *   },
+ * });
+ *
+ * // ─── Every table key is a Repository ───
+ *
+ * // Insert
+ * orm.users.insert({ id: "u1", name: "alice" });
+ * orm.users.insertMany([{ id: "u2", name: "bob" }]);
+ *
+ * // Query
+ * const user   = orm.users.findById("u1");
+ * const all    = orm.users.findMany();
+ * const page   = orm.users.findPage({ limit: 10, offset: 0 });
+ * const one    = orm.users.findOne({ where: { name: { eq: "alice" } } });
+ * const count  = orm.users.count({ age: { gte: 18 } });
+ *
+ * // Update & delete
+ * orm.users.update({ id: "u1", name: "alice smith" });
+ * orm.users.upsert({ data: { id: "u1", name: "alice" }, conflictTarget: "id" });
+ * orm.users.deleteById("u1");
+ * orm.users.deleteWhere({ status: { eq: "banned" } });
+ *
+ * // ─── Framework methods (prefixed with _) ───
+ *
+ * orm._transaction(() => {
+ *   orm.users.insert({ id: "t1", name: "txn" });
+ *   orm.users.deleteById("old");
+ * });
+ *
+ * orm._close();
+ * ```
+ */
+export type foxdb<
   Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > = {
@@ -102,13 +180,13 @@ export type BunORM<
     infer PK,
     infer TS
   >
-    ? Repository<
-        T,
-        PK extends ScalarKeys<T> ? PK : never,
-        Materialized<T, Tables, Rels, K & string>,
-        TimestampShape<TS>
-      >
-    : never;
+  ? Repository<
+    T,
+    PK extends ScalarKeys<T> ? PK : never,
+    Materialized<T, Tables, Rels, K & string>,
+    TimestampShape<TS>
+  >
+  : never;
 } & {
   /** run a transaction */
   _transaction<R>(fn: () => R): R;
@@ -140,20 +218,20 @@ export type BunORM<
 export function createORM<
   const T extends Record<string, TableConfig<any, any, any>>,
   const Rels extends readonly TypedRelation[] = readonly TypedRelation[]
->(opts: CreateORMOptions<T, Rels>): BunORM<T, Rels> {
+>(opts: CreateORMOptions<T, Rels>): foxdb<T, Rels> {
   const dbPath = opts.path ?? ":memory:";
   if (opts.rebuildOnLaunch && dbPath !== ":memory:" && dbPath.length > 0) {
     unlinkDbFiles(dbPath);
   }
   const db = new BunDatabase(opts);
-  let accessors: BunORM<T, Rels>;
+  let accessors: foxdb<T, Rels>;
   const events = new EventBus();
 
   try {
     // Validate tables object
     const tableEntries = Object.entries(opts.tables);
     if (tableEntries.length === 0) {
-      raise("NO_TABLES", "bunorm: at least one table must be defined in `tables`");
+      raise("NO_TABLES", "foxdb: at least one table must be defined in `tables`");
     }
 
     // Create repositories with eager validation
@@ -168,7 +246,7 @@ export function createORM<
       if (!colNames.has(pkName)) {
         raise(
           "INVALID_PK",
-          `bunorm: primary key "${pkName}" is not a scalar column in table "${name}"`,
+          `foxdb: primary key "${pkName}" is not a scalar column in table "${name}"`,
           { table: name, column: pkName }
         );
       }
@@ -179,7 +257,7 @@ export function createORM<
           if (!colNames.has(colRef.name)) {
             raise(
               "INVALID_INDEX",
-              `bunorm: index column "${colRef.name}" not found in table "${name}"`,
+              `foxdb: index column "${colRef.name}" not found in table "${name}"`,
               { table: name, column: colRef.name }
             );
           }
@@ -220,7 +298,7 @@ export function createORM<
         if (!ownerRepo) {
           raise(
             "INVALID_RELATION",
-            `bunorm: relation owner table "${ownerTable}" not found in tables`,
+            `foxdb: relation owner table "${ownerTable}" not found in tables`,
             { table: ownerTable }
           );
         }
@@ -230,7 +308,7 @@ export function createORM<
           if (!targetRepo) {
             raise(
               "INVALID_RELATION",
-              `bunorm: relation target table "${rel.targetTableName}" not found in tables`,
+              `foxdb: relation target table "${rel.targetTableName}" not found in tables`,
               { table: rel.targetTableName }
             );
           }
@@ -243,7 +321,7 @@ export function createORM<
             if (!ownerCols.has(col)) {
               raise(
                 "INVALID_RELATION",
-                `bunorm: relation ownerField "${rel.ownerField}" is not a scalar column in table "${ownerTable}"`,
+                `foxdb: relation ownerField "${rel.ownerField}" is not a scalar column in table "${ownerTable}"`,
                 { table: ownerTable, field: rel.ownerField }
               );
             }
@@ -255,7 +333,7 @@ export function createORM<
             if (!sub) {
               raise(
                 "INVALID_RELATION",
-                `bunorm: relation ownerField "${rel.ownerField}" references unknown sub-table "${subField}" in table "${ownerTable}"`,
+                `foxdb: relation ownerField "${rel.ownerField}" references unknown sub-table "${subField}" in table "${ownerTable}"`,
                 { table: ownerTable, field: rel.ownerField }
               );
             }
@@ -263,14 +341,14 @@ export function createORM<
             if (!subCols.has(subCol)) {
               raise(
                 "INVALID_RELATION",
-                `bunorm: relation ownerField "${rel.ownerField}" references unknown column "${subCol}" in sub-table "${subField}" of table "${ownerTable}"`,
+                `foxdb: relation ownerField "${rel.ownerField}" references unknown column "${subCol}" in sub-table "${subField}" of table "${ownerTable}"`,
                 { table: ownerTable, field: rel.ownerField }
               );
             }
           } else {
             raise(
               "INVALID_RELATION",
-              `bunorm: relation ownerField "${rel.ownerField}" has too many dot segments (max 2 allowed)`,
+              `foxdb: relation ownerField "${rel.ownerField}" has too many dot segments (max 2 allowed)`,
               { table: ownerTable, field: rel.ownerField }
             );
           }
@@ -280,7 +358,7 @@ export function createORM<
           if (!targetCols.has(rel.targetField)) {
             raise(
               "INVALID_RELATION",
-              `bunorm: relation targetField "${rel.targetField}" is not a scalar column in table "${rel.targetTableName}"`,
+              `foxdb: relation targetField "${rel.targetField}" is not a scalar column in table "${rel.targetTableName}"`,
               { table: rel.targetTableName, field: rel.targetField }
             );
           }
@@ -351,7 +429,7 @@ export function createORM<
     meta.setCompressed("_schema_compressed", schemaBytes);
     meta.setJSON("_tables", Object.keys(opts.tables));
     meta.setJSON("_relations", relations);
-    meta.setString("_bunorm_version", "0.0.2");
+    meta.setString("_foxdb_version", "0.0.2");
 
     // ─── Build and inject materializers ─────────────────────────────────────────
 
@@ -603,7 +681,7 @@ export function createORM<
                 if (!rel) return undefined;
                 return (
                   (rec as Record<string, unknown>)[
-                    `_${rel.ownerField}_resolved`
+                  `_${rel.ownerField}_resolved`
                   ] ?? null
                 );
               },
@@ -622,7 +700,7 @@ export function createORM<
                 get() {
                   return (
                     (rec as Record<string, unknown>)[
-                      `_${rel.ownerField}_resolved`
+                    `_${rel.ownerField}_resolved`
                     ] ?? null
                   );
                 },
@@ -644,7 +722,7 @@ export function createORM<
         repo.flush();
       }
       if (opts?.includeMeta) {
-        for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
+        for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_foxdb_version"]) {
           meta.delete(key);
         }
       }
@@ -667,7 +745,7 @@ export function createORM<
         return meta.getJSON<unknown[]>("_relations");
       },
       get version() {
-        return meta.getString("_bunorm_version");
+        return meta.getString("_foxdb_version");
       },
     };
 
@@ -699,7 +777,7 @@ export function createORM<
 
     const migrateFn = async (): Promise<void> => {
       if (!opts.migrations) {
-        raise("MIGRATIONS_NOT_CONFIGURED", "bunorm: migrations dir not configured. Pass `migrations: { dir: ... }` to createORM().");
+        raise("MIGRATIONS_NOT_CONFIGURED", "foxdb: migrations dir not configured. Pass `migrations: { dir: ... }` to createORM().");
       }
       await migrate({
         path: dbPath,
@@ -721,7 +799,7 @@ export function createORM<
           // Same contravariance boundary cast for global lifecycle events.
           return events.on(eventOrTable, opOrListener as (payload: unknown) => void);
         }
-        raise("INVALID_EVENT_LISTENER", "bunorm: invalid event listener arguments");
+        raise("INVALID_EVENT_LISTENER", "foxdb: invalid event listener arguments");
       },
     };
 
@@ -733,8 +811,8 @@ export function createORM<
       tables: Object.keys(opts.tables),
       repos,
       logger: {
-        log: (...args: unknown[]) => { console.log("[bunorm]", ...args); },
-        error: (...args: unknown[]) => { console.error("[bunorm]", ...args); },
+        log: (...args: unknown[]) => { console.log("[foxdb]", ...args); },
+        error: (...args: unknown[]) => { console.error("[foxdb]", ...args); },
       },
     };
 
@@ -753,7 +831,7 @@ export function createORM<
         }
       }
       if (opts.flushMetaOnExit) {
-        for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
+        for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_foxdb_version"]) {
           meta.delete(key);
         }
       }
@@ -772,7 +850,7 @@ export function createORM<
     // Crash-time unlink + exit hooks
     if (opts.unlinkDbFilesOnExit === "any") {
       const doUnlink = () => {
-        try { unlinkDbFiles(dbPath); } catch {}
+        try { unlinkDbFiles(dbPath); } catch { }
       };
       const gracefulCrash = () => {
         lifecycle.runExit(ctx);
@@ -815,7 +893,7 @@ export function createORM<
       }
     }
     if (opts.flushMetaOnStart) {
-      for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_bunorm_version"]) {
+      for (const key of ["_schema_hash", "_schema_compressed", "_tables", "_relations", "_foxdb_version"]) {
         meta.delete(key);
       }
     }
@@ -823,7 +901,7 @@ export function createORM<
     // Auto-migrate (fire-and-forget; errors are logged)
     if (opts.autoMigrate && opts.migrations) {
       migrate({ path: dbPath, migrationsDir: opts.migrations.dir }).catch((err: unknown) => {
-        console.error("[bunorm] autoMigrate failed:", err);
+        console.error("[foxdb] autoMigrate failed:", err);
       });
     }
 
@@ -837,7 +915,7 @@ export function createORM<
     events.emit("ready", { phase: "ready", timestamp: Date.now() });
 
   } catch (err) {
-    // Initialization errors are ALWAYS thrown — a broken ORM is unusable
+    // Initialization errors are ALWAYS thrown - a broken ORM is unusable
     if (err instanceof ORMError) {
       events.emit("fail", { phase: "fail", error: err, timestamp: Date.now() });
     } else {
