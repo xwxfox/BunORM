@@ -19,7 +19,7 @@ export interface TableDescriptor<
   TS extends TimestampConfig = undefined
 > extends TableConfig<T, PK, TS> {}
 
-/** Shared configuration shape for all overloads */
+/** @internal */
 interface TableConfigShape<PK extends string, TS extends TimestampConfig> {
   primaryKey: ColumnRef<PK>;
   indexes?: IndexDefinition[];
@@ -27,6 +27,7 @@ interface TableConfigShape<PK extends string, TS extends TimestampConfig> {
   timestamps?: TS;
 }
 
+/** describe a table schema + config for createORM */
 export function table<
   T extends TObject,
   PK extends string,

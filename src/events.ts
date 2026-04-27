@@ -6,18 +6,14 @@
 
 import type { TableConfig, TableOperation, BroadOperation, TableEventOperation, TableEventPayload, Infer } from "./types.ts";
 
-/** Internal listener storage.
- *  Because TS functions are contravariant in parameters, a typed listener
- *  `(payload: SpecificEvent) => void` cannot be stored in a
- *  `Set<(payload: SpecificEvent) => void>` keyed by string.
- *  The public ORMEvents interface provides full type safety; the cast to
- *  `(payload: unknown) => void` happens at the single boundary in orm.ts. */
+/** @internal */
 type Listener = (payload: unknown) => void;
 
 // ─── Typed event map ──────────────────────────────────────────────────────────
 
 // ─── Lifecycle event payloads (concrete, no remapping) ───────────────────────
 
+/** lifecycle events emitted by the orm */
 export interface LifecycleEventMap {
   start: { phase: "start"; timestamp: number };
   ready: { phase: "ready"; timestamp: number };
@@ -26,12 +22,12 @@ export interface LifecycleEventMap {
   fail: { phase: "fail"; error: Error; timestamp: number };
 }
 
-// ─── Table event payload extractor (works by pattern-matching the key) ────────
-
+/** @internal */
 export type TableEventKey<Tables extends Record<string, TableConfig<any, any, any>>> =
   | { [K in keyof Tables & string]: `${K}.${TableOperation}` }[keyof Tables & string]
   | { [K in keyof Tables & string]: `${K}.${BroadOperation}` }[keyof Tables & string];
 
+/** @internal */
 export type ExtractEventPayload<
   K extends string,
   Tables extends Record<string, TableConfig<any, any, any>>
@@ -50,16 +46,17 @@ export type ExtractEventPayload<
 
 // ─── Public events interface ──────────────────────────────────────────────────
 
+/** typed event listener api */
 export interface ORMEvents<
   Tables extends Record<string, TableConfig<any, any, any>>
 > {
-  /** Global lifecycle event */
+  /** listen to lifecycle events (start, ready, shutdown, exit, fail) */
   on<K extends (keyof LifecycleEventMap) & string>(
     event: K,
     listener: (payload: LifecycleEventMap[K]) => void
   ): () => void;
 
-  /** Table-scoped operation event */
+  /** listen to table events (insert, update, findMany, etc) */
   on<Table extends keyof Tables & string, Op extends TableOperation | BroadOperation>(
     table: Table,
     operation: Op,
@@ -70,6 +67,7 @@ export interface ORMEvents<
   ): () => void;
 }
 
+/** @internal */
 export class EventBus {
   private readonly listeners = new Map<string, Set<Listener>>();
   private readonly tableActive = new Set<string>();

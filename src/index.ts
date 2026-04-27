@@ -1,22 +1,31 @@
 /**
- * bunorm — public API surface
+ * bunorm — typed sqlite orm backed by typebox
+ *
+ * ```ts
+ * import { createORM, table } from "bunorm";
+ * import { Object, String } from "typebox";
+ *
+ * const orm = createORM({
+ *   tables: {
+ *     users: table(Object({ id: String(), name: String() }), s => ({
+ *       primaryKey: s.id
+ *     }))
+ *   }
+ * });
+ *
+ * orm.users.insert({ id: "1", name: "alice" });
+ * const user = orm.users.findById("1");
+ * ```
  */
 
-// ORM entry point
 export { createORM } from "./orm.ts";
 export type { BunORM, CreateORMOptions, CreateORMBaseOptions } from "./orm.ts";
 
-// Database
 export { BunDatabase } from "./database.ts";
-
-// Repository
 export { Repository } from "./repository.ts";
 
-// Type helpers
 export type {
   Infer,
-  FlatRow,
-  SubTableItem,
   WhereClause,
   OrderByClause,
   FindOptions,
@@ -26,71 +35,44 @@ export type {
   PageResult,
   TableConfig,
   IndexDefinition,
-  RelationEntry,
-  RelationsConfig,
-  PaginationOptions,
-  ScalarPath,
+  TableOperation,
+  BroadOperation,
+  TableEventPayload,
+  ErrorPolicy,
+  UnlinkPolicy,
 } from "./types.ts";
 
-// Table helper
 export { table } from "./table.ts";
 export type { TableDescriptor, SubTableConfig } from "./table.ts";
 
-// Column refs
 export type { ColumnRef, ColumnRefs, TScalarSchema } from "./columns.ts";
 
-// Relations builder
 export { createRelationBuilder } from "./relations.ts";
 export type { RelationBuilder } from "./relations.ts";
-
-// Typed relation
 export type { TypedRelation } from "./typed-relation.ts";
 
-// Schema utilities (for advanced use)
 export { introspectTable, buildCreateTableSQL } from "./schema.ts";
-
-// Metadata store
 export { MetaStore } from "./meta.ts";
-
-// Timestamps
 export { resolveTimestampNames, DEFAULT_TIMESTAMP_NAMES } from "./timestamps.ts";
 export type { TimestampConfig } from "./timestamps.ts";
 
-// Inspector
 export { inspectSchema, inspectAllTables } from "./inspector.ts";
 export type { InspectorTable, InspectorColumn, InspectorIndex } from "./inspector.ts";
 
-// Diff
 export { computeDiff } from "./diff.ts";
 export type { DesiredTable } from "./diff.ts";
 
-// Sync
 export { applySync } from "./sync.ts";
 
-// Migrate
 export { migrate } from "./migrate.ts";
 export { createMigration } from "./migration-template.ts";
+export type { Migration, MigrateOptions, SchemaDiff, SchemaChange, SyncPolicy } from "./types.ts";
 
-// Migration types
-export type {
-  Migration,
-  MigrateOptions,
-  SchemaDiff,
-  SchemaChange,
-  SyncPolicy,
-} from "./types.ts";
-
-// Event system
 export { EventBus } from "./events.ts";
-export type { TableEventPayload, TableOperation, BroadOperation } from "./types.ts";
+export type { LifecycleEventMap, ORMEvents } from "./events.ts";
 
-// Lifecycle
 export { LifecycleManager } from "./lifecycle.ts";
 export type { ORMContext, LifecycleHook } from "./lifecycle.ts";
 
-// Errors
 export { ORMError, raise, withTrace } from "./errors.ts";
 export type { ORMErrorContext, TraceEntry } from "./errors.ts";
-
-// QoL types
-export type { ErrorPolicy, UnlinkPolicy } from "./types.ts";

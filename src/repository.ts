@@ -47,6 +47,7 @@ import type { TimestampConfig } from "./timestamps.ts";
 
 // ─── Repository ───────────────────────────────────────────────────────────────
 
+/** typed repository for a single table */
 export class Repository<
   T extends TObject,
   PK extends ScalarKeys<T>,
@@ -54,30 +55,23 @@ export class Repository<
   TS = {}
 > {
   readonly tableName: string;
+  /** table metadata — columns, sub-tables, indexes */
   readonly meta: TableMeta;
 
-  /** Compiled validator — JIT-accelerated schema check + Parse */
   private readonly validator: ReturnType<typeof Compile<T>>;
-
   private readonly db: BunDatabase;
   private readonly descriptor: TableConfig<T, PK>;
-
-  /** Shared prototype for entity objects */
   private _entityProto: object | null = null;
-
-  /** Resolved timestamp column names */
   private readonly _timestampNames: { createdAt: string | null; updatedAt: string | null };
-
-  /** Materializer closures injected after two-pass init */
   private _materialize?: (
     record: Record<string, unknown>
   ) => Record<string, unknown>;
   private _materializeMany?: (
     records: Record<string, unknown>[]
   ) => Record<string, unknown>[];
-
   private _events?: EventBus;
 
+  /** @internal */
   setEventBus(bus: EventBus): void {
     this._events = bus;
   }
@@ -92,11 +86,7 @@ export class Repository<
     this.db = db;
     this.meta = introspectTable(tableName, config.schema);
     this._timestampNames = resolveTimestampNames(config.timestamps, this.meta);
-
-    // Compile schema once — reused for every validate/parse call
     this.validator = Compile(config.schema);
-
-    // Create tables + indexes
     this._migrate();
   }
 
@@ -184,18 +174,19 @@ export class Repository<
 
   // ─── Validation ────────────────────────────────────────────────────────────
 
-  /** Validate + coerce via TypeBox Validator.Parse — throws on invalid data */
+/** validate and coerce data against the schema. throws on invalid input. */
   parse(data: unknown): Infer<T> {
     return this.validator.Parse(data);
   }
 
-  /** Type-guard only — no throw */
+  /** type-guard — returns true if data matches the schema */
   check(data: unknown): data is Infer<T> {
     return this.validator.Check(data);
   }
 
   // ─── Insert ────────────────────────────────────────────────────────────────
 
+  /** insert a single record */
   insert(data: InsertData<T>): Entity<Infer<T>, Mat, TS> {
     return withTrace("repository.insert", { table: this.tableName }, () => {
       const parsed = this.parse(data);
@@ -229,7 +220,7 @@ export class Repository<
     });
   }
 
-  /** Insert many records in a single transaction */
+  /** insert many records in a single transaction */
   insertMany(records: InsertData<T>[]): Entity<Infer<T>, Mat, TS>[] {
     return withTrace("repository.insertMany", { table: this.tableName }, () => {
       const parsed = records.map((r) => this.parse(r));
@@ -262,6 +253,7 @@ export class Repository<
 
   // ─── Upsert ────────────────────────────────────────────────────────────────
 
+  /** insert or update on conflict */
   upsert(opts: UpsertOptions<T, PK>): Entity<Infer<T>, Mat, TS> {
     return withTrace("repository.upsert", { table: this.tableName }, () => {
       const parsed = this.parse(opts.data);
@@ -316,6 +308,7 @@ export class Repository<
 
   // ─── Find by PK ────────────────────────────────────────────────────────────
 
+  /** find a record by its primary key */
   findById(id: Infer<T>[PK]): Entity<Infer<T>, Mat, TS> | null {
     return withTrace("repository.findById", { table: this.tableName }, () => {
       const result = this._findByIdRaw(id);
@@ -339,6 +332,7 @@ export class Repository<
 
   // ─── Find many ─────────────────────────────────────────────────────────────
 
+  /** find many records matching the given filters */
   findMany(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS>[] {
     return withTrace("repository.findMany", { table: this.tableName }, () => {
       const { sql, params } = buildSelect(this.tableName, opts);
@@ -350,7 +344,7 @@ export class Repository<
     });
   }
 
-  /** findMany with total count — useful for pagination UIs */
+  /** find many with total count — useful for pagination */
   findPage(opts: FindOptions<T> = {}): PageResult<Entity<Infer<T>, Mat, TS>> {
     return withTrace("repository.findPage", { table: this.tableName }, () => {
       const { sql, params, countSql, countParams } = buildSelect(
@@ -378,6 +372,7 @@ export class Repository<
     });
   }
 
+  /** find a single record matching the given filters */
   findOne(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS> | null {
     return withTrace("repository.findOne", { table: this.tableName }, () => {
       const { sql, params } = buildSelect(this.tableName, { ...opts, limit: 1 });
@@ -389,7 +384,7 @@ export class Repository<
     });
   }
 
-  /** Batch materialized find — N+1 safe */
+  /** find many with resolved relations (n+1 safe) */
   findManyMaterialized(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS>[] {
     const rows = this.findMany(opts);
     if (!this._materializeMany) return rows;
@@ -409,6 +404,7 @@ export class Repository<
 
   // ─── Count ─────────────────────────────────────────────────────────────────
 
+  /** count records matching the given filters */
   count(where?: WhereClause<T>): number {
     return withTrace("repository.count", { table: this.tableName }, () => {
       const { sql, params } = buildWhere(where);
@@ -421,6 +417,7 @@ export class Repository<
 
   // ─── Update ────────────────────────────────────────────────────────────────
 
+  /** update a record — must include the primary key */
   update(data: UpdateData<T, PK>): Entity<Infer<T>, Mat, TS> | null {
     return withTrace("repository.update", { table: this.tableName }, () => {
       const obj = this._record(data as Infer<T>);
@@ -475,6 +472,7 @@ export class Repository<
 
   // ─── Delete ────────────────────────────────────────────────────────────────
 
+  /** delete a record by its primary key */
   deleteById(id: Infer<T>[PK]): boolean {
     return withTrace("repository.deleteById", { table: this.tableName }, () => {
       const pk = this.descriptor.primaryKey.name;
@@ -495,6 +493,7 @@ export class Repository<
     });
   }
 
+  /** delete records matching the given filters */
   deleteWhere(where: WhereClause<T>): number {
     return withTrace("repository.deleteWhere", { table: this.tableName }, () => {
       const { sql: whereSql, params } = buildWhere(where);
@@ -519,6 +518,7 @@ export class Repository<
 
   // ─── Table lifecycle ───────────────────────────────────────────────────────
 
+  /** truncate the table and all sub-tables */
   flush(): void {
     withTrace("repository.flush", { table: this.tableName }, () => {
       this.db.exec(`DELETE FROM "${this.tableName}"`);
@@ -529,6 +529,7 @@ export class Repository<
     });
   }
 
+  /** drop the table and all sub-tables */
   drop(): void {
     for (const sub of this.meta.subTables) {
       this.db.exec(`DROP TABLE IF EXISTS "${sub.tableName}"`);
@@ -578,7 +579,7 @@ export class Repository<
 
   // ─── Raw access ────────────────────────────────────────────────────────────
 
-  /** Escape hatch — run arbitrary SQL against the underlying DB */
+  /** run raw sql — escape hatch */
   raw<R = unknown>(sql: string, ...params: unknown[]): R[] {
     return this.db.prepare(sql).all(...(params as SQLQueryBindings[])) as R[];
   }

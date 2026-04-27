@@ -11,7 +11,7 @@ import { Database, constants, type SQLQueryBindings } from "bun:sqlite";
 /** Narrow re-export so callers don't need to import bun:sqlite themselves */
 export type { SQLQueryBindings };
 
-/** A prepared statement with strongly-typed param binding */
+/** prepared sqlite statement */
 export interface BunStatement {
   run(...params: SQLQueryBindings[]): { changes: number; lastInsertRowid: number | bigint };
   all(...params: SQLQueryBindings[]): unknown[];
@@ -46,7 +46,9 @@ interface DatabaseOptions {
 
 // ─── BunORM Database ──────────────────────────────────────────────────────────
 
+/** sqlite database with statement caching and pragma tuning */
 export class BunDatabase {
+  /** underlying bun:sqlite database */
   readonly db: Database;
 
   constructor(opts: DatabaseOptions = {}) {
@@ -70,21 +72,17 @@ export class BunDatabase {
     this.db.run("PRAGMA temp_store = MEMORY;");
   }
 
-  /** Execute DDL statements — typically table CREATE and index CREATE */
+  /** execute ddl (create table, index, etc) */
   exec(sql: string): void {
     this.db.run(sql);
   }
 
-  /** Run a block inside a BEGIN / COMMIT transaction */
+  /** run a block inside a transaction */
   transaction<T>(fn: () => T): T {
     return this.db.transaction(fn)();
   }
 
-  /**
-   * Cleanly close the database.
-   * Finalizes all cached statements and disables WAL persistence
-   * so no -wal/-shm sidecar files are left behind.
-   */
+  /** close the database and finalize cached statements */
   close(): void {
     // Finalize all cached statements before closing the DB
     for (const stmt of this._stmtCache.values()) {
@@ -101,16 +99,10 @@ export class BunDatabase {
     this.db.close();
   }
 
-  /**
-   * Prepared statement cache — keyed by the SQL string.
-   * Statements are compiled once and reused, which is the primary
-   * performance win over naïve query execution.
-   * Limited to 256 entries to prevent unbounded growth from
-   * dynamic queries (e.g. varying IN(...) list sizes).
-   */
   private static readonly _MAX_CACHE_SIZE = 256;
   private readonly _stmtCache = new Map<string, BunStatement>();
 
+  /** get or compile a prepared statement */
   prepare(sql: string): BunStatement {
     let stmt = this._stmtCache.get(sql);
     if (!stmt) {
@@ -129,7 +121,7 @@ export class BunDatabase {
     return stmt as BunStatement;
   }
 
-  /** Clear the statement cache (e.g. after schema changes) */
+  /** clear the statement cache */
   clearCache(): void {
     for (const stmt of this._stmtCache.values()) {
       try { stmt.finalize(); } catch { /* ignore */ }

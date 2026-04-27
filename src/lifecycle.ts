@@ -11,30 +11,26 @@ import type { BunORM } from "./orm.ts";
 import type { TableConfig } from "./types.ts";
 import type { TypedRelation } from "./typed-relation.ts";
 
+/** context passed to lifecycle hooks */
 export interface ORMContext<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > {
-  /** Public ORM accessor */
   orm: BunORM<T, Rels>;
-  /** Raw DB wrapper */
   db: BunDatabase;
-  /** Metadata store */
   meta: MetaStore;
-  /** Known table names */
   tables: string[];
-  /** Internal repository map for advanced use */
   repos: Map<string, unknown>;
-  /** Logger proxy (debug mode) */
   logger: { log: (...args: unknown[]) => void; error: (...args: unknown[]) => void };
 }
 
+/** lifecycle hook signature */
 export type LifecycleHook<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > = (ctx: ORMContext<T, Rels>) => void | Promise<void>;
 
-/** Narrow an unknown value to a PromiseLike for async hook detection */
+/** @internal */
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
     typeof value === "object" &&
@@ -44,6 +40,7 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
+/** @internal */
 function runSyncOrLog<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
@@ -66,6 +63,7 @@ function runSyncOrLog<
   }
 }
 
+/** manages startup and shutdown hook execution */
 export class LifecycleManager<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
@@ -78,29 +76,39 @@ export class LifecycleManager<
   private _ready = false;
   private _shutdown = false;
 
+  /** true after runReady completes */
   get isReady() { return this._ready; }
+  /** true after runShutdown completes */
   get isShutdown() { return this._shutdown; }
 
+  /** register a startup hook */
   onStart(hook: LifecycleHook<T, Rels>) { this.startHooks.push(hook); }
+  /** register a ready hook */
   onReady(hook: LifecycleHook<T, Rels>) { this.readyHooks.push(hook); }
+  /** register a shutdown hook */
   onShutdown(hook: LifecycleHook<T, Rels>) { this.shutdownHooks.push(hook); }
+  /** register an exit hook */
   onExit(hook: LifecycleHook<T, Rels>) { this.exitHooks.push(hook); }
 
+  /** @internal */
   runStart(ctx: ORMContext<T, Rels>): void {
     runSyncOrLog(this.startHooks, ctx, "onStart");
   }
 
+  /** @internal */
   runReady(ctx: ORMContext<T, Rels>): void {
     runSyncOrLog(this.readyHooks, ctx, "onReady");
     this._ready = true;
   }
 
+  /** @internal */
   runShutdown(ctx: ORMContext<T, Rels>): void {
     if (this._shutdown) return;
     this._shutdown = true;
     runSyncOrLog(this.shutdownHooks, ctx, "onShutdown");
   }
 
+  /** @internal */
   runExit(ctx: ORMContext<T, Rels>): void {
     runSyncOrLog(this.exitHooks, ctx, "onExit");
   }

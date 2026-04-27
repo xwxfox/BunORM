@@ -3,12 +3,14 @@
  * Central error type with invisible tracing and structured context.
  */
 
+/** a single entry in the error trace */
 export interface TraceEntry {
   label: string;
   time: number;
   details?: Record<string, unknown>;
 }
 
+/** context captured when an error occurs */
 export interface ORMErrorContext {
   table?: string;
   operation?: string;
@@ -18,6 +20,7 @@ export interface ORMErrorContext {
   [key: string]: unknown;
 }
 
+/** structured error with trace and context */
 export class ORMError extends Error {
   readonly code: string;
   readonly trace: TraceEntry[];
@@ -42,18 +45,22 @@ export class ORMError extends Error {
 // Simple synchronous trace stack — safe because SQLite ops are single-threaded
 const _traceStack: TraceEntry[] = [];
 
+/** @internal */
 export function enterTrace(label: string, details?: Record<string, unknown>): void {
   _traceStack.push({ label, time: Date.now(), details });
 }
 
+/** @internal */
 export function leaveTrace(): void {
   _traceStack.pop();
 }
 
+/** @internal */
 export function currentTrace(): TraceEntry[] {
   return _traceStack.slice();
 }
 
+/** @internal */
 export function withTrace<T>(
   label: string,
   details: Record<string, unknown> | undefined,
@@ -67,10 +74,7 @@ export function withTrace<T>(
   }
 }
 
-/**
- * Primary throw helper used across the ORM.
- * Always throws an ORMError with full trace + context.
- */
+/** throw an ORMError with trace and context */
 export function raise(
   code: string,
   message: string,
@@ -83,8 +87,10 @@ export function raise(
   });
 }
 
+/** how to handle runtime errors */
 export type ErrorPolicy = "throw" | "emit" | "emit-swallow" | "crash";
 
+/** @internal */
 export function handleError(
   err: ORMError,
   policy: ErrorPolicy,

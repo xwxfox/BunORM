@@ -16,31 +16,32 @@ import type { TypedRelation } from "./typed-relation.ts";
 
 // ─── Primitive column types ──────────────────────────────────────────────────
 
+/** scalar values sqlite can store natively */
 export type SqliteScalar = string | number | boolean | null | bigint;
 
 // ─── Schema introspection helpers ────────────────────────────────────────────
 
-/** Extract only the scalar properties from a TObject's properties map */
+/** @internal */
 export type ScalarProperties<P extends TProperties> = {
   [K in keyof P as P[K] extends TArray<infer _> ? never : K]: P[K];
 };
 
-/** Extract only the array-of-object properties (sub-tables) */
+/** @internal */
 export type ArrayOfObjectProperties<P extends TProperties> = {
   [K in keyof P as P[K] extends TArray<TObject>
     ? K
     : never]: P[K] extends TArray<infer Item> ? Item : never;
 };
 
-/** All flat column keys of a TObject schema */
+/** column names that are scalar (not arrays or nested objects) */
 export type ScalarKeys<T extends TObject> =
   keyof ScalarProperties<T["properties"]> & string;
 
-/** All sub-table keys of a TObject schema */
+/** @internal */
 export type SubTableKeys<T extends TObject> =
   keyof ArrayOfObjectProperties<T["properties"]> & string;
 
-/** Valid dot-path into a sub-table array, e.g. "lineItems.itemNumber" */
+/** @internal */
 export type SubTableScalarPath<T extends TObject> = {
   [K in SubTableKeys<T>]: T["properties"][K] extends TArray<infer Item>
     ? Item extends TObject
@@ -49,22 +50,22 @@ export type SubTableScalarPath<T extends TObject> = {
     : never;
 }[SubTableKeys<T>];
 
-/** Any valid scalar column or dot-path into a sub-table */
+/** @internal */
 export type ScalarPath<T extends TObject> =
   | ScalarKeys<T>
   | SubTableScalarPath<T>;
 
 // ─── Static inference shortcuts ──────────────────────────────────────────────
 
-/** The full hydrated TypeScript type of a schema */
+/** the typescript type that matches a typebox schema */
 export type Infer<T extends TSchema> = Static<T>;
 
-/** The row type stored in the DB (scalars only, arrays become separate tables) */
+/** @internal */
 export type FlatRow<T extends TObject> = {
   [K in ScalarKeys<T>]: Static<T["properties"][K]>;
 };
 
-/** Sub-table item type for a given array field */
+/** @internal */
 export type SubTableItem<
   T extends TObject,
   K extends SubTableKeys<T>
@@ -72,7 +73,7 @@ export type SubTableItem<
   ? Static<Item>
   : never;
 
-/** Scalar keys of a sub-table item schema */
+/** @internal */
 export type SubTableItemKeys<
   T extends TObject,
   K extends SubTableKeys<T>
@@ -109,13 +110,14 @@ type ScalarFilter<V> = V extends string
   ? { eq: V } | { isNull: true } | { isNotNull: true }
   : { isNull: true } | { isNotNull: true };
 
-/** Typed WHERE clause — only flat/scalar columns are filterable */
+/** where filters for queries — only scalar columns */
 export type WhereClause<T extends TObject> = {
   [K in ScalarKeys<T>]?: ScalarFilter<Static<T["properties"][K]>>;
 };
 
 // ─── OrderBy ─────────────────────────────────────────────────────────────────
 
+/** sort direction for queries */
 export type OrderByClause<T extends TObject> = {
   column: ScalarKeys<T>;
   direction?: "ASC" | "DESC";
@@ -123,6 +125,7 @@ export type OrderByClause<T extends TObject> = {
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
+/** @internal */
 export interface PaginationOptions {
   limit?: number;
   offset?: number;
@@ -130,6 +133,7 @@ export interface PaginationOptions {
 
 // ─── Query options ────────────────────────────────────────────────────────────
 
+/** options for findMany / findPage / findOne */
 export interface FindOptions<T extends TObject> extends PaginationOptions {
   where?: WhereClause<T>;
   orderBy?: OrderByClause<T> | OrderByClause<T>[];
@@ -138,10 +142,10 @@ export interface FindOptions<T extends TObject> extends PaginationOptions {
 
 // ─── Insert / Update ──────────────────────────────────────────────────────────
 
-/** Full record to insert (full Infer<T>) */
+/** full record to insert */
 export type InsertData<T extends TObject> = Infer<T>;
 
-/** Partial for updates — must include PK */
+/** update payload — must include the primary key */
 export type UpdateData<T extends TObject, PK extends ScalarKeys<T>> = Pick<
   Infer<T>,
   PK
@@ -150,6 +154,7 @@ export type UpdateData<T extends TObject, PK extends ScalarKeys<T>> = Pick<
 
 // ─── Index definition ────────────────────────────────────────────────────────
 
+/** index on one or more columns */
 export interface IndexDefinition {
   name?: string;
   columns: ColumnRef<string, TScalarSchema>[];
@@ -158,8 +163,10 @@ export interface IndexDefinition {
 
 // ─── Timestamp types ─────────────────────────────────────────────────────────
 
+/** timestamp configuration for a table */
 export type TimestampConfig = true | false | { createdAt?: string; updatedAt?: string } | undefined;
 
+/** @internal */
 export type TimestampShape<T extends TimestampConfig> = true extends T
   ? { createdAt: number; updatedAt: number }
   : [T] extends [{ createdAt?: infer C; updatedAt?: infer U }]
@@ -168,12 +175,14 @@ export type TimestampShape<T extends TimestampConfig> = true extends T
 
 // ─── Entity helper ───────────────────────────────────────────────────────────
 
+/** a database row with optional timestamps and materialized relations */
 export type Entity<T, Mat = never, TS = {}> = [Mat] extends [never]
   ? T & TS
   : T & TS & { materialize(): Mat };
 
 // ─── Table config (what users pass per table in `createORM`) ─────────────────
 
+/** table descriptor passed to createORM */
 export interface TableConfig<
   T extends TObject = TObject,
   PK extends string = string,
@@ -188,6 +197,7 @@ export interface TableConfig<
 
 // ─── Meta accessors ──────────────────────────────────────────────────────────
 
+/** read-only metadata about the current database schema */
 export interface MetaAccessors {
   schemaHash: string | null;
   schemaJSON: string | null;
@@ -198,7 +208,7 @@ export interface MetaAccessors {
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 
-/** Runtime shape of a built relation (legacy) */
+/** @internal */
 export interface BuiltRelation {
   ownerTable: string;
   ownerField: string;
@@ -208,7 +218,7 @@ export interface BuiltRelation {
   kind: "scalar" | "subTable";
 }
 
-/** Legacy object-based relations config (kept for backward compat) */
+/** @internal */
 export interface RelationEntry<
   Tables extends Record<string, TableConfig<any, any, any>>,
   Owner extends keyof Tables,
@@ -219,7 +229,7 @@ export interface RelationEntry<
   targetField: ScalarKeys<Tables[Target]["schema"]>;
 }
 
-/** Top-level relations config — each key is an owner table name */
+/** @internal */
 export type RelationsConfig<
   Tables extends Record<string, TableConfig<any, any, any>>
 > = {
@@ -236,7 +246,7 @@ export type RelationsConfig<
 
 // ─── Materialized types ───────────────────────────────────────────────────────
 
-/** Extract names of scalar direct-merge relations for a table */
+/** @internal */
 export type ScalarMergeNames<
   Rels extends readonly TypedRelation[],
   Owner extends string
@@ -249,7 +259,7 @@ export type ScalarMergeNames<
     : never
   : never;
 
-/** Type of a specific scalar direct-merge relation */
+/** @internal */
 export type ScalarMergeType<
   Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[],
@@ -264,7 +274,7 @@ export type ScalarMergeType<
     : never
   : never;
 
-/** Scalar direct-merge properties added to materialized entity */
+/** @internal */
 export type ScalarMerge<
   Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[],
@@ -278,7 +288,7 @@ export type ScalarMerge<
   >;
 };
 
-/** Extract names of sub-table direct-merge relations for a table+sub-field */
+/** @internal */
 export type SubMergeNames<
   Rels extends readonly TypedRelation[],
   Owner extends string,
@@ -292,7 +302,7 @@ export type SubMergeNames<
     : never
   : never;
 
-/** Type of a specific sub-table direct-merge relation */
+/** @internal */
 export type SubMergeType<
   Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[],
@@ -308,7 +318,7 @@ export type SubMergeType<
     : never
   : never;
 
-/** Sub-table direct-merge properties added to array items */
+/** @internal */
 export type SubMerge<
   Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[],
@@ -324,7 +334,7 @@ export type SubMerge<
   >;
 };
 
-/** Full materialized entity type for a table */
+/** entity with resolved relations */
 export type Materialized<
   T extends TObject,
   Tables extends Record<string, TableConfig<any, any, any>>,
@@ -340,6 +350,7 @@ export type Materialized<
 
 // ─── Result types ─────────────────────────────────────────────────────────────
 
+/** paginated query result */
 export interface PageResult<T> {
   data: T[];
   total: number;
@@ -349,15 +360,17 @@ export interface PageResult<T> {
 
 // ─── Upsert ───────────────────────────────────────────────────────────────────
 
+/** insert or update on conflict */
 export interface UpsertOptions<T extends TObject, PK extends ScalarKeys<T>> {
   data: InsertData<T>;
   conflictTarget: PK | PK[];
-  /** Which columns to update on conflict — defaults to all non-PK columns */
+  /** columns to update on conflict — defaults to all non-pk columns */
   update?: Array<ScalarKeys<T>>;
 }
 
 // ─── Migration types ──────────────────────────────────────────────────────────
 
+/** a single migration step */
 export interface Migration {
   name: string;
   date: string;
@@ -365,6 +378,7 @@ export interface Migration {
   down?: (db: import("./database.ts").BunDatabase) => void;
 }
 
+/** options for migrate() */
 export interface MigrateOptions {
   path: string;
   migrationsDir: string;
@@ -372,6 +386,7 @@ export interface MigrateOptions {
   target?: string;
 }
 
+/** @internal */
 export type SchemaChange =
   | { kind: "add-table"; table: string }
   | { kind: "add-column"; table: string; column: { name: string; sqlType: string; nullable: boolean; optional: boolean }; hasDefault: boolean }
@@ -385,11 +400,13 @@ export type SchemaChange =
   | { kind: "change-pk"; table: string }
   | { kind: "drop-index"; table: string; index: { name: string; unique: number; columns: string[] } };
 
+/** @internal */
 export interface SchemaDiff {
   safe: SchemaChange[];
   unsafe: SchemaChange[];
 }
 
+/** how to handle schema drift on startup */
 export type SyncPolicy =
   | "ignore"
   | "warn"
@@ -399,6 +416,7 @@ export type SyncPolicy =
 
 // ─── Event types ──────────────────────────────────────────────────────────────
 
+/** specific operations that can be listened to per table */
 export type TableOperation =
   | "insert"
   | "insertMany"
@@ -413,10 +431,13 @@ export type TableOperation =
   | "count"
   | "flush";
 
+/** broad categories for event listening */
 export type BroadOperation = "read" | "write" | "delete";
 
+/** @internal */
 export type TableEventOperation = TableOperation | BroadOperation;
 
+/** payload delivered to event listeners */
 export interface TableEventPayload<
   T = unknown,
   Op extends TableEventOperation = TableEventOperation
@@ -433,6 +454,8 @@ export interface TableEventPayload<
 
 // ─── Lifecycle config primitives ──────────────────────────────────────────────
 
+/** how to handle errors */
 export type ErrorPolicy = "throw" | "emit" | "emit-swallow" | "crash";
 
+/** when to delete db files on shutdown */
 export type UnlinkPolicy = true | "onlyGraceful" | "any" | false | undefined;

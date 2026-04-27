@@ -33,7 +33,9 @@ import { unlinkDbFiles } from "./database.ts";
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 
+/** base options for opening a sqlite database */
 export interface CreateORMBaseOptions {
+  /** file path — defaults to ":memory:" */
   path?: string;
   cacheSize?: number;
   busyTimeout?: number;
@@ -41,35 +43,56 @@ export interface CreateORMBaseOptions {
   mmapSize?: number;
 }
 
+/** options passed to createORM */
 export interface CreateORMOptions<
   T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > extends CreateORMBaseOptions {
+  /** table schemas */
   tables: T;
+  /** cross-table relations */
   relations?: RelationsConfig<any> | ((builder: RelationBuilder<T>) => Rels);
+  /** how to handle schema drift */
   sync?: SyncPolicy;
+  /** migration directory */
   migrations?: { dir: string };
 
   // ─── Lifecycle & QoL ────────────────────────────────────────────────────────
+  /** runs before schema validation */
   onStart?: LifecycleHook<T, Rels>;
+  /** runs after the db is fully ready */
   onReady?: LifecycleHook<T, Rels>;
+  /** runs before closing the db */
   onShutdown?: LifecycleHook<T, Rels>;
+  /** runs after the db is closed */
   onExit?: LifecycleHook<T, Rels>;
+  /** run pending migrations on startup */
   autoMigrate?: boolean;
+  /** seed data after sync */
   seed?: (orm: BunORM<T, Rels>) => void;
+  /** wipe and recreate the db on every launch */
   rebuildOnLaunch?: boolean;
+  /** flush these tables before seed */
   flushOnStart?: Array<keyof T & string>;
+  /** flush these tables before close */
   flushOnExit?: Array<keyof T & string>;
+  /** drop these tables before seed */
   dropOnStart?: Array<keyof T & string>;
+  /** drop these tables before close */
   dropOnExit?: Array<keyof T & string>;
+  /** wipe metadata on startup */
   flushMetaOnStart?: boolean;
+  /** wipe metadata on exit */
   flushMetaOnExit?: boolean;
+  /** how to handle errors */
   errorPolicy?: ErrorPolicy;
+  /** delete db files on exit */
   unlinkDbFilesOnExit?: UnlinkPolicy;
 }
 
 // ─── ORM return type ──────────────────────────────────────────────────────────
 
+/** the orm object returned by createORM — typed repositories + framework apis */
 export type BunORM<
   Tables extends Record<string, TableConfig<any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
@@ -87,24 +110,33 @@ export type BunORM<
       >
     : never;
 } & {
+  /** run a transaction */
   _transaction<R>(fn: () => R): R;
+  /** close the database */
   _close(): void;
+  /** read-only metadata */
   _meta: MetaAccessors;
+  /** resolve relations for a single record */
   _materialize<Owner extends keyof Tables & string>(
     ownerTable: Owner,
     record: Record<string, unknown>
   ): Record<string, unknown>;
+  /** resolve relations for many records (n+1 safe) */
   _materializeMany<Owner extends keyof Tables & string>(
     ownerTable: Owner,
     records: Record<string, unknown>[]
   ): Array<Record<string, unknown>>;
+  /** truncate all tables */
   _flush(opts?: { includeMeta?: boolean }): void;
+  /** run pending migrations */
   _migrate(): Promise<void>;
+  /** listen to table or lifecycle events */
   _events: ORMEvents<Tables>;
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
+/** create a typed orm instance backed by sqlite */
 export function createORM<
   const T extends Record<string, TableConfig<any, any, any>>,
   const Rels extends readonly TypedRelation[] = readonly TypedRelation[]
