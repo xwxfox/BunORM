@@ -33,7 +33,7 @@ function pArgs(args: string[]) {
 if (import.meta.main) {
     const { values, positionals, bunPath, cwd } = pArgs(Bun.argv);
     const since = await getLastEdited("./docs/api");
-    const rootFilesChanged = await hasChanges(["logo.svg", "README.md", "typedoc.json", "tsconfig.json"], {
+    const rootFilesChanged = await hasChanges(["foxdb.svg", "README.md", "typedoc.json", "tsconfig.json"], {
         since,
     });
     const srcFilesChanged = await hasChanges(["src"], {
@@ -140,7 +140,7 @@ async function buildApiDocs(bunPath: string, cwd: string) {
 
 async function cpToDocs() {
     await cp("README.md", "docs/guide/readme.md", { force: true });
-    await cp("logo.svg", "docs/public/logo.svg", { force: true });
+    await cp("foxdb.svg", "docs/public/foxdb.svg", { force: true });
     await cp("og-banner.png", "docs/public/og-banner.png", { force: true });
 }
 
@@ -180,7 +180,7 @@ async function meow(cmd: string[]) {
 
 async function ensureAss() {
     const [logoExists, readmeExists, typeDocExists, ogBannerExists] = await Promise.all([
-        exists("docs/public/logo.svg"),
+        exists("docs/public/foxdb.svg"),
         exists("docs/guide/readme.md"),
         exists("docs/api/index.md"),
         exists("docs/public/og-banner.png"),

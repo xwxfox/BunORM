@@ -17,7 +17,7 @@ export default defineConfig({
   srcExclude: ["**/README.md", "**/TODO.md"],
 
   head: [
-    ["link", { rel: "icon", href: "/logo.svg", type: "image/svg+xml" }],
+    ["link", { rel: "icon", href: "/foxdb.svg", type: "image/svg+xml" }],
     ["meta", { name: "theme-color", content: "#1e1e2e" }],
     ["meta", { property: "og:site_name", content: "foxdb" }],
     ["meta", { property: "og:image", content: `${SITE_URL}${OG_IMAGE}` }],
@@ -41,7 +41,7 @@ export default defineConfig({
   lastUpdated: true,
 
   themeConfig: {
-    logo: "/logo.svg",
+    logo: "/foxdb.svg",
 
     nav: [
       { text: "Guide", link: "/guide/getting-started" },

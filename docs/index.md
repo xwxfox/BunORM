@@ -6,7 +6,7 @@ hero:
   text: itty bitty e2e typed orm for bun
   tagline: zero codegen, fully typed, validated, smol ~ built on typebox & bun:sqlite
   image:
-    src: /logo.svg
+    src: /foxdb.svg
     alt: foxdb logo
   actions:
     - theme: brand
