@@ -141,6 +141,7 @@ async function buildApiDocs(bunPath: string, cwd: string) {
 async function cpToDocs() {
     await cp("README.md", "docs/guide/readme.md", { force: true });
     await cp("logo.svg", "docs/public/logo.svg", { force: true });
+    await cp("og-banner.png", "docs/public/og-banner.png", { force: true });
 }
 
 async function meow(cmd: string[]) {
@@ -178,15 +179,16 @@ async function meow(cmd: string[]) {
 }
 
 async function ensureAss() {
-    const [logoExists, readmeExists, typeDocExists] = await Promise.all([
+    const [logoExists, readmeExists, typeDocExists, ogBannerExists] = await Promise.all([
         exists("docs/public/logo.svg"),
         exists("docs/guide/readme.md"),
         exists("docs/api/index.md"),
+        exists("docs/public/og-banner.png"),
     ]);
 
     let manualDocsExist = true;
     let generatedDocsExist = true;
-    if (!logoExists || !readmeExists) {
+    if (!logoExists || !readmeExists || !ogBannerExists) {
         manualDocsExist = false;
     }
     if (!typeDocExists) {

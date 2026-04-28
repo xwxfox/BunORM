@@ -1,12 +1,16 @@
 {
   "name": "foxdb",
   "version": "0.0.1",
-  "description": "mmmmmm yummy db :3",
+  "description": "itty bitty e2e typed orm for bun :3",
   "main": "dist/index.mjs",
+  "publishConfig": {
+    "access": "public"
+  },
   "types": "dist/index.d.mts",
   "scripts": {
     "build": "bunup",
-    "docs": "bun run docs.ts"
+    "docs": "bun run docs.ts",
+    "release": "bun run publish.ts"
   },
   "keywords": [
     "orm",
@@ -41,8 +45,7 @@
     "dist/**/*",
     "package.json",
     "README.md",
-    "LICENSE.md",
-    "tsconfig.json"
+    "LICENSE.md"
   ],
   "devDependencies": {
     "@catppuccin/vitepress": "^0.1.2",
