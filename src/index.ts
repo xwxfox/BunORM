@@ -2,7 +2,7 @@
  * foxdb - typed sqlite orm backed by typebox
  *
  * ```ts
- * import { createORM, table } from "foxdb";
+ * import { createORM, table } from "@xwxfox/foxdb";
  * import { Object, String } from "typebox";
  *
  * const orm = createORM({

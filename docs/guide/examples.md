@@ -8,7 +8,7 @@ A small store with products, orders, and line items.
 
 ```typescript
 import { Object, String, Number, Integer, Array, Optional } from "typebox";
-import { createORM, table } from "foxdb";
+import { createORM, table } from "@xwxfox/foxdb";
 
 const ProductSchema = Object({
   sku: String(),
@@ -126,7 +126,7 @@ Auto-run migrations on startup:
 
 ```typescript
 // migrations/001-init.ts
-import type { Migration } from "foxdb";
+import type { Migration } from "@xwxfox/foxdb";
 
 export default {
   name: "init",

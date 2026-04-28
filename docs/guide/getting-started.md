@@ -5,7 +5,7 @@ Welcome to **foxdb** - a tiny, fully-typed SQLite ORM for Bun built on top of [T
 ## Installation
 
 ```bash
-bun add foxdb
+bun add @xwxfox/foxdb
 ```
 
 > foxdb requires `bun:sqlite` and is designed exclusively for the Bun runtime.
@@ -16,7 +16,7 @@ Everything in foxdb starts with a **TypeBox schema**. Schemas define both your T
 
 ```typescript
 import { Object, String, Number, Integer } from "typebox";
-import { createORM, table } from "foxdb";
+import { createORM, table } from "@xwxfox/foxdb";
 
 const UserSchema = Object({
   id: String(),

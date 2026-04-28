@@ -10,12 +10,12 @@ foxdb gives you a repository-style orm where your database schema *is* your type
 ## quick start
 
 ```bash
-bun add foxdb
+bun add @xwxfox/foxdb
 ```
 
 ```typescript
 import { Object, String, Number, Integer } from "typebox";
-import { createORM, table } from "foxdb";
+import { createORM, table } from "@xwxfox/foxdb";
 
 const UserSchema = Object({
   id: String(),
@@ -250,7 +250,7 @@ foxdb can auto-run migrations on startup. create migration files and point `migr
 
 ```typescript
 // migrations/001-init.ts
-import type { Migration } from "foxdb";
+import type { Migration } from "@xwxfox/foxdb";
 
 export default {
   name: "init",

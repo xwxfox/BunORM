@@ -46,10 +46,10 @@ const version = pkg.version;
 
 // Publish to npm
 console.log("\nPublishing to npm...");
-const publish = await $`bun pm publish --access public`.nothrow();
+const publish = await $`bun publish --access public`.nothrow();
 if (publish.exitCode !== 0) {
     console.error("npm publish failed!");
     process.exit(1);
 }
 
-console.log(`\nPublished foxdb@${version} to npm`);
+console.log(`\nPublished @xwxfox/foxdb@${version} to npm`);

@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 // ─── Template ─────────────────────────────────────────────────────────────────
 
 function migrationTemplate(name: string, date: string): string {
-  return `import type { Migration } from "foxdb";
+  return `import type { Migration } from "@xwxfox/foxdb";
 
 export default {
   name: "${name}",

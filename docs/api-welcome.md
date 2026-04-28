@@ -277,7 +277,7 @@ Migration file format:
 
 ```ts
 // migrations/001-init.ts
-import type { Migration } from "foxdb";
+import type { Migration } from "@xwxfox/foxdb";
 
 export default {
   name: "init",
