@@ -4,28 +4,31 @@ import typedocSidebar from "../api/typedoc-sidebar.json";
 
 export default defineConfig({
   title: "foxdb",
-  description: "A typed SQLite ORM for Bun - zero codegen, fully typed, tiny",
+  description: "itty bitty typebox-powered ORM for Bun :3 (might bite~)",
   base: "/",
   lang: "en-US",
   cleanUrls: true,
+  
 
   head: [
-    ["link", { rel: "icon", href: "/Logo.svg", type: "image/svg+xml" }],
-    ["meta", { name: "theme-color", content: "#c4b5fd" }],
+    ["link", { rel: "icon", href: "/logo.svg", type: "image/svg+xml" }],
+    ["meta", { name: "theme-color", content: "#1e1e2e" }],
   ],
 
   appearance: "dark",
 
   markdown: {
     theme: {
-      light: "github-light",
+      light: "catppuccin-latte",
       dark: "catppuccin-mocha",
     },
     lineNumbers: true,
   },
 
+  lastUpdated: true,
+  
   themeConfig: {
-    logo: "/Logo.svg",
+    logo: "/logo.svg",
 
     nav: [
       { text: "Guide", link: "/guide/getting-started" },
@@ -38,10 +41,11 @@ export default defineConfig({
         {
           text: "Guide",
           items: [
+            { text: "Hi! :3", link: "/guide/readme" },
             { text: "Getting Started", link: "/guide/getting-started" },
             { text: "Core Concepts", link: "/guide/core-concepts" },
             { text: "Examples", link: "/guide/examples" },
-            { text: "API Reference", link: "/guide/api-reference" },
+            { text: "API Reference", link: "/api" },
           ],
         },
       ],

@@ -4,7 +4,7 @@
   "entryPoints": ["src/index.ts"],
   "out": "docs/api",
   "tsconfig": "tsconfig.json",
-  "readme": "README.md",
+  "readme": "docs/api-welcome.md",
   "includeVersion": true,
   "sort": ["kind", "instance-first", "alphabetical"],
   "navigation": {
@@ -65,6 +65,7 @@
   "navigationLinks": {
     "GitHub": "https://github.com/xwxfox/foxdb"
   },
+  
   "lang": "en",
   "markdownLinkExternal": true,
   "sourceLinkExternal": true,

@@ -6,7 +6,7 @@ hero:
   text: typed sqlite orm for bun
   tagline: zero codegen, fully typed, tiny ~ built on typebox & bun:sqlite
   image:
-    src: /Logo.svg
+    src: /logo.svg
     alt: foxdb logo
   actions:
     - theme: brand
@@ -40,14 +40,4 @@ features:
     details: onStart, onReady, onShutdown, onExit for seeding, migrating, cleaning up
 ---
 
-<style>
-:root {
-  --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(135deg, #c4b5fd 30%, #f9a8d4 70%);
-  --vp-home-hero-image-background-image: linear-gradient(135deg, #c4b5fd 30%, #93c5fd 70%);
-  --vp-home-hero-image-filter: blur(40px);
-}
-.VPImage.image-src {
-  max-height: 180px;
-}
-</style>
+

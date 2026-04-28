@@ -2,9 +2,10 @@ import { describe, test, expect, afterEach } from "bun:test";
 import { existsSync, unlinkSync } from "node:fs";
 import { Object, String } from "typebox";
 import { createORM, table } from "../src/index.ts";
+import os from "node:os";
+const tmpDb = os.tmpdir() + "/foxdb_qol_test.db";
 
 const UserSchema = Object({ id: String(), name: String() });
-const tmpDb = "/tmp/foxdb_qol_test.db";
 
 describe("QoL options", () => {
   afterEach(() => {

@@ -9,3 +9,6 @@ docs/.vitepress/dist
 docs/.vitepress/cache
 docs/.vitepress/.temp
 docs/api
+dist
+docs/guide/readme.md
+docs/public/logo.svg

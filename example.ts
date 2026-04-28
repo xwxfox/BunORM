@@ -139,6 +139,7 @@ const orm = createORM({
   unlinkDbFilesOnExit: true,
 });
 
+
 // ─── 3. Event System Demo ─────────────────────────────────────────────────────
 
 console.log("\n─── Event System ───");
@@ -262,3 +263,7 @@ console.log("\nEvent listeners removed.");
 console.log("\n─── Closing ───");
 orm._close();
 console.log("Done - DB files unlinked because unlinkDbFilesOnExit: true");
+
+orm._events.on("inventory", "write", (event) => {
+  console.log(`[event:inventory.write] operation=${event.operation}`);
+});

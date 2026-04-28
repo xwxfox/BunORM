@@ -19,6 +19,7 @@ import {
   type TSchema,
 } from "typebox";
 
+
 /** @category Schema */
 export type TScalarSchema =
   | TString

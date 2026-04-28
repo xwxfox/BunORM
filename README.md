@@ -1,4 +1,4 @@
-# foxdb ~ a typed sqlite orm for bun
+# foxdb ~ a typed sqlite orm for bun :3
 
 > built on top of [typebox](https://github.com/sinclairzx81/typebox) schemas and `bun:sqlite`. fast, tiny, fully typed :3
 

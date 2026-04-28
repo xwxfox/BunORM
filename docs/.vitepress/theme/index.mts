@@ -1,4 +1,4 @@
 import DefaultTheme from "vitepress/theme";
-import "./style.css";
+import "@catppuccin/vitepress/theme/mocha/peach.css";
 
 export default DefaultTheme;

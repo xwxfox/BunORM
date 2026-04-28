@@ -1,16 +1,12 @@
 {
   "name": "foxdb",
   "version": "0.0.1",
-  "description": "Synchronous ORM lib for Bun:sqlite - easier db handling",
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
+  "description": "mmmmmm yummy db :3",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
   "scripts": {
-    "build": "tsc",
-    "2prepare": "npm run build",
-    "docs:api": "typedoc",
-    "docs:dev": "vitepress dev docs",
-    "docs:build": "typedoc && vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "build": "bunup",
+    "docs": "bun run docs.ts"
   },
   "keywords": [
     "orm",
@@ -20,7 +16,7 @@
     "bun:sqlite",
     "bun",
     "bun.js",
-    "bun.sh"
+    "typebox"
   ],
   "tags": [
     "orm",
@@ -30,7 +26,7 @@
     "bun:sqlite",
     "bun",
     "bun.js",
-    "bun.sh"
+    "typebox"
   ],
   "author": "xwxfox",
   "repository": {
@@ -40,12 +36,18 @@
   "bugs": {
     "url": "https://github.com/xwxfox/foxdb/issues"
   },
-  "license": "ISC",
+  "license": "MIT",
   "files": [
-    "lib/**/*"
+    "dist/**/*",
+    "package.json",
+    "README.md",
+    "LICENSE.md",
+    "tsconfig.json"
   ],
   "devDependencies": {
+    "@catppuccin/vitepress": "^0.1.2",
     "@types/bun": "latest",
+    "bunup": "^0.16.31",
     "typedoc": "^0.28.19",
     "typedoc-plugin-coverage": "^4.0.3",
     "typedoc-plugin-extras": "^4.0.1",
@@ -53,10 +55,10 @@
     "typedoc-plugin-mdn-links": "^5.1.1",
     "typedoc-plugin-merge-modules": "^7.0.0",
     "typedoc-vitepress-theme": "^1.1.2",
-    "typescript": "^5",
+    "typescript": "^5.9.3",
     "vitepress": "^1.6.4"
   },
   "dependencies": {
-    "typebox": "^1.1.30"
+    "typebox": "^1.1.34"
   }
 }
