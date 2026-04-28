@@ -4,6 +4,9 @@
 
 foxdb gives you a repository-style orm where your database schema *is* your typescript types. no codegen, no decorators, no magic. just plain typebox objects that compile to sqlite tables and give you autocomplete everywhere ~
 
+
+> Credit to [@deadlinecode](https://github.com/deadlinecode) for the original idea and base :3
+
 ## quick start
 
 ```bash
