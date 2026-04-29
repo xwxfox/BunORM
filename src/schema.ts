@@ -19,6 +19,7 @@ import {
   type TProperties,
   type TLiteral,
 } from "typebox";
+import type { ColumnCodec } from "./codec.ts";
 
 // ─── Column metadata ──────────────────────────────────────────────────────────
 
@@ -186,12 +187,17 @@ export function buildIndexSQL(
   tableName: string,
   columns: string[],
   unique: boolean,
-  name?: string
+  name?: string,
+  where?: string,
+  include?: string[]
 ): string {
   const idxName = name ?? `idx_${tableName}__${columns.join("_")}`;
   const uniq = unique ? "UNIQUE " : "";
   const cols = columns.map((c) => `"${c}"`).join(", ");
-  return `CREATE ${uniq}INDEX IF NOT EXISTS "${idxName}" ON "${tableName}" (${cols})`;
+  // SQLite in this environment does not support the INCLUDE clause;
+  // silently drop included columns so the API remains portable.
+  const wh = where ? ` WHERE ${where}` : "";
+  return `CREATE ${uniq}INDEX IF NOT EXISTS "${idxName}" ON "${tableName}" (${cols})${wh}`;
 }
 
 // ─── Flatten / hydrate ────────────────────────────────────────────────────────
@@ -202,20 +208,24 @@ export function buildIndexSQL(
  */
 export function flattenRow(
   obj: Record<string, unknown>,
-  meta: TableMeta
-): Record<string, SqliteScalar> {
-  const row: Record<string, SqliteScalar> = {};
+  meta: TableMeta,
+  codecs?: Map<string, ColumnCodec>
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
   for (const col of meta.columns) {
     const v = obj[col.name];
+    let encoded: unknown;
     if (v === undefined || v === null) {
-      row[col.name] = null;
+      encoded = null;
     } else if (col.sqlType === "TEXT" && typeof v === "object") {
-      row[col.name] = JSON.stringify(v);
+      encoded = JSON.stringify(v);
     } else if (col.sqlType === "INTEGER" && typeof v === "boolean") {
-      row[col.name] = v ? 1 : 0;
+      encoded = v ? 1 : 0;
     } else {
-      row[col.name] = toSqliteScalar(v);
+      encoded = toSqliteScalar(v);
     }
+    const codec = codecs?.get(col.name);
+    row[col.name] = codec ? codec.encode(encoded) : encoded;
   }
   return row;
 }
@@ -225,31 +235,39 @@ export function flattenRow(
  */
 export function flattenSubRows(
   ownerPk: SqliteScalar,
-  items: Record<string, unknown>[],
-  sub: SubTableMeta
-): Array<Record<string, SqliteScalar>> {
-  return items.map((obj, idx) => {
-    const row: Record<string, SqliteScalar> = {
+  items: unknown[],
+  sub: SubTableMeta,
+  codecs?: Map<string, ColumnCodec>
+): Array<Record<string, unknown>> {
+  return items.map((item, idx) => {
+    if (item === null || typeof item !== "object") {
+      throw new TypeError("Sub-table item must be an object");
+    }
+    const obj = item as Record<string, unknown>;
+    const row: Record<string, unknown> = {
       _owner_id: ownerPk,
       _index: idx,
     };
     for (const col of sub.columns) {
       const v = obj[col.name];
+      let encoded: unknown;
       if (v === undefined || v === null) {
-        row[col.name] = null;
+        encoded = null;
       } else if (col.sqlType === "TEXT" && typeof v === "object") {
-        row[col.name] = JSON.stringify(v);
+        encoded = JSON.stringify(v);
       } else if (col.sqlType === "INTEGER" && typeof v === "boolean") {
-        row[col.name] = v ? 1 : 0;
+        encoded = v ? 1 : 0;
       } else {
-        row[col.name] = toSqliteScalar(v);
+        encoded = toSqliteScalar(v);
       }
+      const codec = codecs?.get(col.name);
+      row[col.name] = codec ? codec.encode(encoded) : encoded;
     }
     return row;
   });
 }
 
-type SqliteScalar = string | number | boolean | null | bigint;
+export type SqliteScalar = string | number | boolean | null | bigint;
 
 function toSqliteScalar(v: unknown): SqliteScalar {
   if (v === null || v === undefined) return null;
@@ -265,12 +283,23 @@ function toSqliteScalar(v: unknown): SqliteScalar {
 export function hydrateRow(
   flat: Record<string, unknown>,
   meta: TableMeta,
-  subRows: Map<string, Record<string, unknown>[]>
+  subRows: Map<string, Record<string, unknown>[]>,
+  codecs?: Map<string, ColumnCodec>,
+  select?: string[],
+  include?: string[]
 ): Record<string, unknown> {
   const obj: Record<string, unknown> = {};
 
-  for (const col of meta.columns) {
-    const v = flat[col.name];
+  const columns = select
+    ? meta.columns.filter((c) => select.includes(c.name))
+    : meta.columns;
+
+  for (const col of columns) {
+    let v = flat[col.name];
+    const codec = codecs?.get(col.name);
+    if (codec) {
+      v = codec.decode(v);
+    }
     if (col.sqlType === "TEXT" && typeof v === "string") {
       // Try JSON parse for objects that were stringified
       try {
@@ -290,7 +319,11 @@ export function hydrateRow(
   }
 
   for (const sub of meta.subTables) {
-    obj[sub.fieldName] = subRows.get(sub.tableName) ?? [];
+    if (include && !include.includes(sub.fieldName)) {
+      obj[sub.fieldName] = [];
+    } else {
+      obj[sub.fieldName] = subRows.get(sub.tableName) ?? [];
+    }
   }
 
   return obj;

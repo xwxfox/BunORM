@@ -68,18 +68,23 @@ export interface WhereResult {
 }
 
 export function buildWhere<T extends TObject>(
-  where: WhereClause<T> | undefined
+  where: WhereClause<T> | undefined,
+  softDeleteColumn?: string
 ): WhereResult {
-  if (!where || Object.keys(where).length === 0) return { sql: "", params: [] };
-
   const parts: string[] = [];
   const params: unknown[] = [];
 
-  for (const [col, filter] of Object.entries(where)) {
-    if (!isFilterShape(filter)) continue;
-    const entry = buildFilter(col, filter);
-    parts.push(entry.sql);
-    params.push(...entry.params);
+  if (softDeleteColumn) {
+    parts.push(`"${softDeleteColumn}" IS NULL`);
+  }
+
+  if (where && Object.keys(where).length > 0) {
+    for (const [col, filter] of Object.entries(where)) {
+      if (!isFilterShape(filter)) continue;
+      const entry = buildFilter(col, filter);
+      parts.push(entry.sql);
+      params.push(...entry.params);
+    }
   }
 
   if (parts.length === 0) return { sql: "", params: [] };
@@ -128,19 +133,27 @@ export interface SelectResult {
   countParams: unknown[];
 }
 
-export function buildSelect<T extends TObject>(
+export function buildSelectSql<T extends TObject>(
   tableName: string,
-  opts: FindOptions<T>
+  opts: FindOptions<T>,
+  softDeleteColumn?: string
 ): SelectResult {
-  const { sql: whereSql, params: whereParams } = buildWhere(opts.where);
+  const { sql: whereSql, params: whereParams } = buildWhere(
+    opts.where,
+    opts.includeDeleted ? undefined : softDeleteColumn
+  );
   const orderSql = buildOrderBy(opts.orderBy);
   const { sql: limitSql, params: limitParams } = buildLimitOffset(
     opts.limit,
     opts.offset
   );
 
+  const selectCols = opts.select
+    ? opts.select.map((c) => `"${c}"`).join(", ")
+    : "*";
+
   const clauses = [
-    `SELECT * FROM "${tableName}"`,
+    `SELECT ${selectCols} FROM "${tableName}"`,
     whereSql,
     orderSql,
     limitSql,
@@ -163,6 +176,14 @@ export function buildSelect<T extends TObject>(
   };
 }
 
+export function buildSelect<T extends TObject>(
+  tableName: string,
+  opts: FindOptions<T>,
+  softDeleteColumn?: string
+): SelectResult {
+  return buildSelectSql(tableName, opts, softDeleteColumn);
+}
+
 // ─── INSERT builder ───────────────────────────────────────────────────────────
 
 export function buildInsert(
@@ -176,6 +197,33 @@ export function buildInsert(
     sql: `INSERT INTO "${tableName}" (${cols}) VALUES (${placeholders})`,
     params: keys.map((k) => row[k]),
   };
+}
+
+export function buildInsertMany(
+  tableName: string,
+  rows: Record<string, unknown>[],
+  maxParams = 999
+): Array<{ sql: string; params: unknown[] }> {
+  if (rows.length === 0) return [];
+  const first = rows[0]!;
+  const keys = Object.keys(first);
+  const colCount = keys.length;
+  const maxRowsPerStmt = Math.floor(maxParams / colCount);
+  if (maxRowsPerStmt <= 0) {
+    raise("TOO_MANY_COLUMNS", `foxdb: table "${tableName}" has too many columns for multi-value insert`);
+  }
+  const batches: Array<{ sql: string; params: unknown[] }> = [];
+  for (let i = 0; i < rows.length; i += maxRowsPerStmt) {
+    const batch = rows.slice(i, i + maxRowsPerStmt);
+    const cols = keys.map((k) => `"${k}"`).join(", ");
+    const valueGroups = batch.map(() => {
+      const ph = keys.map(() => "?").join(", ");
+      return `(${ph})`;
+    }).join(", ");
+    const params = batch.flatMap((row) => keys.map((k) => row[k]));
+    batches.push({ sql: `INSERT INTO "${tableName}" (${cols}) VALUES ${valueGroups}`, params });
+  }
+  return batches;
 }
 
 // ─── UPSERT (INSERT OR REPLACE / ON CONFLICT DO UPDATE) ──────────────────────

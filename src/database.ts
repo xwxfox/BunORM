@@ -5,6 +5,7 @@
  */
 
 import { Database, constants, type SQLQueryBindings } from "bun:sqlite";
+import { TableScheduler } from "./scheduler.ts";
 
 // ─── Typed statement wrapper ──────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ export interface BunStatement {
   run(...params: SQLQueryBindings[]): { changes: number; lastInsertRowid: number | bigint };
   all(...params: SQLQueryBindings[]): unknown[];
   get(...params: SQLQueryBindings[]): unknown;
+  iterate(...params: SQLQueryBindings[]): IterableIterator<unknown>;
   finalize(): void;
 }
 
@@ -46,6 +48,8 @@ export interface DatabaseOptions {
   synchronous?: "OFF" | "NORMAL" | "FULL" | "EXTRA";
   /** PRAGMA mmap_size in bytes. 0 disables. Defaults to 256 MB. */
   mmapSize?: number;
+  /** PRAGMA auto_vacuum level. "incremental" | "full" | false. Defaults to false. */
+  autoVacuum?: "incremental" | "full" | false;
 }
 
 // ─── foxdb Database ──────────────────────────────────────────────────────────
@@ -57,6 +61,9 @@ export interface DatabaseOptions {
 export class BunDatabase {
   /** underlying bun:sqlite database */
   readonly db: Database;
+
+  /** scheduler for table maintenance tasks */
+  readonly scheduler = new TableScheduler();
 
   constructor(opts: DatabaseOptions = {}) {
     const path = opts.path ?? ":memory:";
@@ -77,6 +84,11 @@ export class BunDatabase {
     this.db.run(`PRAGMA mmap_size = ${mmap};`);
     this.db.run("PRAGMA foreign_keys = ON;");
     this.db.run("PRAGMA temp_store = MEMORY;");
+
+    const autoVacuum = opts.autoVacuum ?? false;
+    if (autoVacuum) {
+      this.db.run(`PRAGMA auto_vacuum = ${autoVacuum.toUpperCase()};`);
+    }
   }
 
   /** execute ddl (create table, index, etc) */
@@ -91,6 +103,7 @@ export class BunDatabase {
 
   /** close the database and finalize cached statements */
   close(): void {
+    this.scheduler.clearAll();
     // Finalize all cached statements before closing the DB
     for (const stmt of this._stmtCache.values()) {
       try { stmt.finalize(); } catch { /* already finalized */ }

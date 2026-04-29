@@ -222,6 +222,8 @@ export interface FindOptions<T extends TObject> extends PaginationOptions {
   where?: WhereClause<T>;
   orderBy?: OrderByClause<T> | OrderByClause<T>[];
   include?: SubTableKeys<T>[];
+  select?: ScalarKeys<T>[];
+  includeDeleted?: boolean;
 }
 
 // ─── Insert / Update ──────────────────────────────────────────────────────────
@@ -252,6 +254,8 @@ export interface IndexDefinition {
   name?: string;
   columns: ColumnRef<string, TScalarSchema>[];
   unique?: boolean;
+  where?: string;
+  include?: ColumnRef<string, TScalarSchema>[];
 }
 
 // ─── Timestamp types ─────────────────────────────────────────────────────────
@@ -298,12 +302,35 @@ export type Entity<T, Mat = never, TS = {}> = [Mat] extends [never]
   ? T & TS
   : T & TS & { materialize(): Mat };
 
+export type ProjectedEntity<
+  T extends TObject,
+  Mat = never,
+  TS = {},
+  K extends ScalarKeys<T> = ScalarKeys<T>
+> = Pick<Infer<T>, K> & TS;
+
 // ─── Table config (what users pass per table in `createORM`) ─────────────────
 
 /**
  * table descriptor passed to createORM
  * @category Schema
  */
+export interface EvictionConfig {
+  maxRows?: number;
+  ttlColumn?: string;
+  ttlMs?: number;
+  lruColumn?: string;
+}
+
+export interface CompressionConfig {
+  columns: ColumnRef<string, TScalarSchema>[];
+  algorithm: "gzip" | "none";
+}
+
+export interface SoftDeleteConfig {
+  column: string;
+}
+
 export interface TableConfig<
   T extends TObject = TObject,
   PK extends string = string,
@@ -314,6 +341,9 @@ export interface TableConfig<
   indexes?: IndexDefinition[];
   subTables?: Partial<Record<string, { indexes?: IndexDefinition[] }>>;
   timestamps?: TS;
+  eviction?: EvictionConfig;
+  compression?: CompressionConfig;
+  softDelete?: SoftDeleteConfig;
 }
 
 // ─── Meta accessors ──────────────────────────────────────────────────────────
@@ -601,6 +631,49 @@ export type SyncPolicy =
   | "auto"
   | ((diff: SchemaDiff, db: import("./database.ts").BunDatabase) => boolean | void);
 
+// ─── Aggregation ──────────────────────────────────────────────────────────────
+
+/** @category Query Types */
+export type AggregationOp<T extends TObject = TObject> =
+  | { sum?: ScalarKeys<T> }
+  | { count?: "*" | ScalarKeys<T> }
+  | { avg?: ScalarKeys<T> }
+  | { min?: ScalarKeys<T> }
+  | { max?: ScalarKeys<T> };
+
+/** @category Query Types */
+export interface AggregateOptions<
+  T extends TObject,
+  A extends Record<string, AggregationOp<T>> = Record<string, AggregationOp<T>>
+> {
+  where?: WhereClause<T>;
+  groupBy?: readonly ScalarKeys<T>[];
+  aggregations: A;
+  includeDeleted?: boolean;
+}
+
+/** @category Query Types */
+export type AggregateResult<
+  A extends Record<string, AggregationOp<any>>,
+  G extends readonly string[] | undefined = undefined
+> = Array<{ [K in keyof A]: unknown } & (G extends readonly string[] ? { [K in G[number]]: unknown } : {})>;
+
+// ─── Query Metrics ────────────────────────────────────────────────────────────
+
+/** @category Observability */
+export interface QueryMetrics {
+  table: string;
+  operation: string;
+  sql: string;
+  durationMs: number;
+  rowCount: number;
+}
+
+/** @category Observability */
+export interface QueryMetricsHook {
+  onQuery: (meta: QueryMetrics) => void;
+}
+
 // ─── Event types ──────────────────────────────────────────────────────────────
 
 /**
@@ -618,8 +691,10 @@ export type TableOperation =
   | "findMany"
   | "findOne"
   | "findPage"
+  | "iterate"
   | "count"
-  | "flush";
+  | "flush"
+  | "aggregate";
 
 /**
  * broad categories for event listening

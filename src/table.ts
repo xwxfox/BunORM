@@ -7,7 +7,7 @@
 import type { TObject } from "typebox";
 import type { ColumnRef, TScalarSchema, ColumnRefs } from "./columns.ts";
 import { createColumnProxy } from "./columns.ts";
-import type { IndexDefinition, TimestampConfig, TableConfig } from "./types.ts";
+import type { IndexDefinition, TimestampConfig, TableConfig, EvictionConfig, CompressionConfig } from "./types.ts";
 
 /** @category Schema */
 export interface SubTableConfig {
@@ -27,6 +27,9 @@ export interface TableConfigShape<PK extends string, TS extends TimestampConfig>
   indexes?: IndexDefinition[];
   subTables?: Partial<Record<string, SubTableConfig>>;
   timestamps?: TS;
+  eviction?: EvictionConfig;
+  compression?: CompressionConfig;
+  softDelete?: import("./types.ts").SoftDeleteConfig;
 }
 
 /**

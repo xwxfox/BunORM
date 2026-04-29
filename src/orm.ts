@@ -24,7 +24,7 @@ import { inspectAllTables } from "./inspector.ts";
 import { computeDiff, type DesiredTable } from "./diff.ts";
 import { applySync } from "./sync.ts";
 import { migrate } from "./migrate.ts";
-import type { SyncPolicy, ErrorPolicy, UnlinkPolicy } from "./types.ts";
+import type { SyncPolicy, ErrorPolicy, UnlinkPolicy, QueryMetricsHook } from "./types.ts";
 import { EventBus, type ORMEvents } from "./events.ts";
 import { LifecycleManager } from "./lifecycle.ts";
 import type { ORMContext, LifecycleHook } from "./lifecycle.ts";
@@ -44,6 +44,8 @@ export interface CreateORMBaseOptions {
   busyTimeout?: number;
   synchronous?: "OFF" | "NORMAL" | "FULL" | "EXTRA";
   mmapSize?: number;
+  autoVacuum?: "incremental" | "full" | false;
+  vacuumIntervalMs?: number;
 }
 
 /**
@@ -118,6 +120,8 @@ export interface CreateORMOptions<
   errorPolicy?: ErrorPolicy;
   /** delete db files on exit */
   unlinkDbFilesOnExit?: UnlinkPolicy;
+  /** observability hooks */
+  hooks?: QueryMetricsHook;
 }
 
 // ─── ORM return type ──────────────────────────────────────────────────────────
@@ -224,6 +228,11 @@ export function createORM<
     unlinkDbFiles(dbPath);
   }
   const db = new BunDatabase(opts);
+  if (opts.autoVacuum === "incremental" && opts.vacuumIntervalMs) {
+    db.scheduler.schedule("auto-vacuum", opts.vacuumIntervalMs, () => {
+      try { db.exec("PRAGMA incremental_vacuum(1000);"); } catch { /* ignore */ }
+    });
+  }
   let accessors: foxdb<T, Rels>;
   const events = new EventBus();
 
@@ -271,6 +280,13 @@ export function createORM<
     // Wire EventBus into repositories
     for (const [name, repo] of repos) {
       repo.setEventBus(events);
+    }
+
+    // Wire metrics hooks into repositories
+    if (opts.hooks?.onQuery) {
+      for (const repo of repos.values()) {
+        repo.setMetricsHook(opts.hooks.onQuery);
+      }
     }
 
     const lifecycle = new LifecycleManager<T, Rels>();

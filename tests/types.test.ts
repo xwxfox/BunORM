@@ -7,6 +7,7 @@
 import { Object, String, Number, Integer, Optional, Array } from "typebox";
 import { table } from "../src/table.ts";
 import { createColumnProxy } from "../src/columns.ts";
+import { createORM } from "../src/orm.ts";
 
 const ItemSchema = Object({
   sku: String(),
@@ -45,3 +46,52 @@ const WithSub = Object({
 const subCols = createColumnProxy(WithSub);
 // @ts-expect-error - tags is an array (sub-table), not a scalar
 void subCols.tags;
+
+  // ─── select projection narrows return type ────────────────────────────────────
+
+function _compileTimeChecks() {
+  const UserSchema = Object({ id: String(), name: String(), age: Number() });
+  const users = table(UserSchema, (s) => ({ primaryKey: s.id }));
+  const orm = createORM({ tables: { users } });
+
+  const projected = orm.users.findMany({ select: ["id"] });
+  // @ts-expect-error — name was not selected
+  void projected[0].name;
+
+  // ─── select + include preserves sub-table types ───────────────────────────────
+
+  const OrderSchema = Object({
+    id: String(),
+    total: Number(),
+    lineItems: Array(Object({ sku: String(), qty: Integer() })),
+  });
+  const orders = table(OrderSchema, (s) => ({ primaryKey: s.id }));
+  const orderOrm = createORM({ tables: { orders } });
+
+  const withItems = orderOrm.orders.findMany({ select: ["id", "total"], include: ["lineItems"] });
+  const firstOrder = withItems[0]!;
+  const _id: string = firstOrder.id;
+  const _total: number = firstOrder.total;
+  const _sku: string = firstOrder.lineItems[0]!.sku;
+  // @ts-expect-error — name is not a scalar column on OrderSchema
+  void firstOrder.name;
+  // @ts-expect-error — lineItems[0].wrong is not a property
+  void firstOrder.lineItems[0]!.wrong;
+
+  orderOrm._close();
+
+  // ─── iterate yields entities ──────────────────────────────────────────────────
+
+  for (const u of orm.users.iterate()) {
+    const _id: string = u.id;
+    void _id;
+  }
+
+  // ─── aggregate returns dynamic shape ──────────────────────────────────────────
+
+  const agg = orm.users.aggregate({ aggregations: { total: { sum: "age" } } });
+  // @ts-expect-error — wrong aggregation alias
+  void agg[0].wrong;
+
+  orm._close();
+}
