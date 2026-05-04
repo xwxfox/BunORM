@@ -103,7 +103,7 @@ export function buildColumns(properties: TProperties): ColumnMeta[] {
   }
   // Also handle nested plain objects encoded as JSON TEXT
   for (const [name, raw] of Object.entries(properties)) {
-    if (!IsArray(raw) && IsObject(raw)) {
+    if (IsObject(raw)) {
       cols.push({ name, sqlType: "TEXT", nullable: false, optional: false });
     }
   }
@@ -132,7 +132,7 @@ export function introspectTable(
         columns: buildColumns(itemSchema.properties),
       });
     } else if (IsArray(raw)) {
-      const { schema, optional } = unwrapOptional(raw);
+      const { optional } = unwrapOptional(raw);
       // Array of primitives → JSON TEXT column
       columns.push({ name: fieldName, sqlType: "TEXT", nullable: optional, optional });
     } else if (IsObject(raw)) {

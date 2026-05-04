@@ -9,7 +9,7 @@ const SchemaWithPrimitiveArrays = Type.Object({
 });
 
 test("arrays of primitives should get a TEXT column", () => {
-  const meta = introspectTable("test", SchemaWithPrimitiveArrays as any);
+  const meta = introspectTable("test", SchemaWithPrimitiveArrays);
   const tagsCol = meta.columns.find(c => c.name === "tags");
   const scoresCol = meta.columns.find(c => c.name === "scores");
   expect(tagsCol).toBeDefined();
@@ -19,7 +19,7 @@ test("arrays of primitives should get a TEXT column", () => {
 });
 
 test("buildColumns handles arrays of primitives as TEXT", () => {
-  const cols = buildColumns(SchemaWithPrimitiveArrays.properties as any);
+  const cols = buildColumns(SchemaWithPrimitiveArrays.properties);
   const tagsCol = cols.find(c => c.name === "tags");
   const scoresCol = cols.find(c => c.name === "scores");
   expect(tagsCol).toBeDefined();
@@ -34,14 +34,14 @@ test("optional primitive arrays produce nullable and optional true", () => {
     tags: Type.Optional(Type.Array(Type.String())),
   });
 
-  const cols = buildColumns(schema.properties as any);
+  const cols = buildColumns(schema.properties);
   const tagsCol = cols.find(c => c.name === "tags");
   expect(tagsCol).toBeDefined();
   expect(tagsCol?.sqlType).toBe("TEXT");
   expect(tagsCol?.nullable).toBe(true);
   expect(tagsCol?.optional).toBe(true);
 
-  const meta = introspectTable("test", schema as any);
+  const meta = introspectTable("test", schema);
   const metaTagsCol = meta.columns.find(c => c.name === "tags");
   expect(metaTagsCol).toBeDefined();
   expect(metaTagsCol?.sqlType).toBe("TEXT");
@@ -56,7 +56,7 @@ test("arrays of booleans and integers are treated as TEXT", () => {
     counts: Type.Array(Type.Integer()),
   });
 
-  const cols = buildColumns(schema.properties as any);
+  const cols = buildColumns(schema.properties);
   const flagsCol = cols.find(c => c.name === "flags");
   const countsCol = cols.find(c => c.name === "counts");
   expect(flagsCol).toBeDefined();
@@ -64,7 +64,7 @@ test("arrays of booleans and integers are treated as TEXT", () => {
   expect(countsCol).toBeDefined();
   expect(countsCol?.sqlType).toBe("TEXT");
 
-  const meta = introspectTable("test", schema as any);
+  const meta = introspectTable("test", schema);
   const metaFlagsCol = meta.columns.find(c => c.name === "flags");
   const metaCountsCol = meta.columns.find(c => c.name === "counts");
   expect(metaFlagsCol).toBeDefined();
@@ -86,7 +86,7 @@ test("nested objects and object arrays still produce expected columns", () => {
     tags: Type.Array(Type.String()),
   });
 
-  const cols = buildColumns(schema.properties as any);
+  const cols = buildColumns(schema.properties);
   const metadataCol = cols.find(c => c.name === "metadata");
   const tagsCol = cols.find(c => c.name === "tags");
   expect(metadataCol).toBeDefined();
@@ -97,7 +97,7 @@ test("nested objects and object arrays still produce expected columns", () => {
   const lineItemsCol = cols.find(c => c.name === "lineItems");
   expect(lineItemsCol).toBeUndefined();
 
-  const meta = introspectTable("test", schema as any);
+  const meta = introspectTable("test", schema);
   const metaMetadataCol = meta.columns.find(c => c.name === "metadata");
   const metaTagsCol = meta.columns.find(c => c.name === "tags");
   expect(metaMetadataCol).toBeDefined();
