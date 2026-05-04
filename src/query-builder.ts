@@ -75,7 +75,11 @@ export type WhereLogic = {
 
 function isWhereLogic(value: unknown): value is WhereLogic {
   if (typeof value !== "object" || value === null) return false;
-  return "AND" in value || "OR" in value || "NOT" in value;
+  const v = value as Record<string, unknown>;
+  if ("AND" in v && Array.isArray(v.AND)) return true;
+  if ("OR" in v && Array.isArray(v.OR)) return true;
+  if ("NOT" in v && typeof v.NOT === "object" && v.NOT !== null) return true;
+  return false;
 }
 
 function buildWhereRecursive<T extends TObject>(
