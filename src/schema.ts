@@ -81,7 +81,7 @@ function schemaToSqlType(schema: TSchema): SqliteType {
   return "TEXT";
 }
 
-function buildColumns(properties: TProperties): ColumnMeta[] {
+export function buildColumns(properties: TProperties): ColumnMeta[] {
   const cols: ColumnMeta[] = [];
   for (const [name, raw] of Object.entries(properties)) {
     if (IsArray(raw)) {
@@ -105,12 +105,7 @@ function buildColumns(properties: TProperties): ColumnMeta[] {
     if (!IsArray(raw) && IsObject(raw)) {
       cols.push({ name, sqlType: "TEXT", nullable: false, optional: false });
     }
-    // Also handle arrays of primitives in second pass if missed
-    if (IsArray(raw) && !IsObject(raw.items)) {
-      if (!cols.find(c => c.name === name)) {
-        cols.push({ name, sqlType: "TEXT", nullable: false, optional: false });
-      }
-    }
+
   }
   return cols;
 }
