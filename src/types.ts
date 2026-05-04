@@ -166,6 +166,10 @@ export type ScalarFilter<V> = V extends string
  */
 export type WhereClause<T extends TObject> = {
   [K in ScalarKeys<T>]?: ScalarFilter<Static<T["properties"][K]>>;
+} & {
+  AND?: WhereClause<T>[];
+  OR?: WhereClause<T>[];
+  NOT?: WhereClause<T>;
 };
 
 // ─── OrderBy ─────────────────────────────────────────────────────────────────

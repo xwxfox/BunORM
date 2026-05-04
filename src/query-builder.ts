@@ -67,10 +67,21 @@ export interface WhereResult {
   params: unknown[];
 }
 
-export function buildWhere<T extends TObject>(
+export type WhereLogic = {
+  AND?: WhereClause<any>[];
+  OR?: WhereClause<any>[];
+  NOT?: WhereClause<any>;
+};
+
+function isWhereLogic(value: unknown): value is WhereLogic {
+  if (typeof value !== "object" || value === null) return false;
+  return "AND" in value || "OR" in value || "NOT" in value;
+}
+
+function buildWhereRecursive<T extends TObject>(
   where: WhereClause<T> | undefined,
   softDeleteColumn?: string
-): WhereResult {
+): { sql: string; params: unknown[] } {
   const parts: string[] = [];
   const params: unknown[] = [];
 
@@ -78,17 +89,66 @@ export function buildWhere<T extends TObject>(
     parts.push(`"${softDeleteColumn}" IS NULL`);
   }
 
-  if (where && Object.keys(where).length > 0) {
-    for (const [col, filter] of Object.entries(where)) {
-      if (!isFilterShape(filter)) continue;
-      const entry = buildFilter(col, filter);
-      parts.push(entry.sql);
-      params.push(...entry.params);
+  if (!where || Object.keys(where).length === 0) {
+    if (parts.length === 0) return { sql: "", params: [] };
+    return { sql: `WHERE ${parts.join(" AND ")}`, params };
+  }
+
+  // Handle logical operators first
+  if (isWhereLogic(where)) {
+    const logic = where as WhereLogic;
+
+    if (logic.AND) {
+      for (const clause of logic.AND) {
+        const child = buildWhereRecursive(clause, undefined);
+        if (child.sql) {
+          parts.push(`(${child.sql.replace(/^WHERE\s+/, "")})`);
+          params.push(...child.params);
+        }
+      }
     }
+
+    if (logic.OR) {
+      const orParts: string[] = [];
+      for (const clause of logic.OR) {
+        const child = buildWhereRecursive(clause, undefined);
+        if (child.sql) {
+          orParts.push(child.sql.replace(/^WHERE\s+/, ""));
+          params.push(...child.params);
+        }
+      }
+      if (orParts.length > 0) {
+        parts.push(`(${orParts.join(" OR ")})`);
+      }
+    }
+
+    if (logic.NOT) {
+      const child = buildWhereRecursive(logic.NOT, undefined);
+      if (child.sql) {
+        parts.push(`NOT (${child.sql.replace(/^WHERE\s+/, "")})`);
+        params.push(...child.params);
+      }
+    }
+  }
+
+  // Handle column filters
+  for (const [col, filter] of Object.entries(where)) {
+    if (col === "AND" || col === "OR" || col === "NOT") continue;
+    if (!isFilterShape(filter)) continue;
+    const entry = buildFilter(col, filter);
+    parts.push(entry.sql);
+    params.push(...entry.params);
   }
 
   if (parts.length === 0) return { sql: "", params: [] };
   return { sql: `WHERE ${parts.join(" AND ")}`, params };
+}
+
+export function buildWhere<T extends TObject>(
+  where: WhereClause<T> | undefined,
+  softDeleteColumn?: string
+): WhereResult {
+  return buildWhereRecursive(where, softDeleteColumn);
 }
 
 // ─── ORDER BY builder ─────────────────────────────────────────────────────────
