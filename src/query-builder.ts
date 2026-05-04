@@ -166,6 +166,7 @@ function buildWhereRecursive<T extends TObject>(
 
     if (logic.OR) {
       const orParts: string[] = [];
+      const orParams: unknown[] = [];
       for (const clause of logic.OR) {
         if (isTriviallyTrue(clause)) {
           orParts.length = 0;
@@ -175,11 +176,12 @@ function buildWhereRecursive<T extends TObject>(
         const child = buildWhereRecursive(clause, undefined);
         if (child.sql) {
           orParts.push(child.sql.replace(/^WHERE\s+/, ""));
-          params.push(...child.params);
+          orParams.push(...child.params);
         }
       }
       if (orParts.length > 0) {
         parts.push(`(${orParts.join(" OR ")})`);
+        params.push(...orParams);
       } else if (!logic.OR.some(isTriviallyTrue)) {
         parts.push("1=0");
       }

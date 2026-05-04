@@ -88,3 +88,12 @@ test("AND with trivially false child returns 1=0", () => {
   expect(result.sql).toBe("WHERE 1=0");
   expect(result.params).toEqual([]);
 });
+
+test("OR with trivially-true child does not leak params", () => {
+  const result = buildWhere<typeof TestSchema>({
+    OR: [{ name: { eq: "x" } }, { AND: [] }],
+    age: { gt: 18 }
+  });
+  expect(result.sql).toBe('WHERE "age" > ?');
+  expect(result.params).toEqual([18]);
+});
