@@ -85,10 +85,11 @@ export function buildColumns(properties: TProperties): ColumnMeta[] {
   const cols: ColumnMeta[] = [];
   for (const [name, raw] of Object.entries(properties)) {
     if (IsArray(raw)) {
+      const { schema, optional } = unwrapOptional(raw);
       // Arrays of objects → handled as sub-table (skip here)
-      if (IsObject(raw.items)) continue;
+      if (IsObject(schema.items)) continue;
       // Arrays of primitives → JSON TEXT
-      cols.push({ name, sqlType: "TEXT", nullable: false, optional: false });
+      cols.push({ name, sqlType: "TEXT", nullable: optional, optional });
       continue;
     }
     if (IsObject(raw)) continue; // nested objects are JSON-encoded as TEXT
@@ -105,7 +106,6 @@ export function buildColumns(properties: TProperties): ColumnMeta[] {
     if (!IsArray(raw) && IsObject(raw)) {
       cols.push({ name, sqlType: "TEXT", nullable: false, optional: false });
     }
-
   }
   return cols;
 }
@@ -132,12 +132,13 @@ export function introspectTable(
         columns: buildColumns(itemSchema.properties),
       });
     } else if (IsArray(raw)) {
+      const { schema, optional } = unwrapOptional(raw);
       // Array of primitives → JSON TEXT column
-      columns.push({ name: fieldName, sqlType: "TEXT", nullable: false, optional: false });
+      columns.push({ name: fieldName, sqlType: "TEXT", nullable: optional, optional });
     } else if (IsObject(raw)) {
       // Nested plain object → JSON-encoded TEXT column
       columns.push({ name: fieldName, sqlType: "TEXT", nullable: false, optional: false });
-    } else if (!IsArray(raw)) {
+    } else {
       const { schema: inner, optional } = unwrapOptional(raw);
       columns.push({
         name: fieldName,
