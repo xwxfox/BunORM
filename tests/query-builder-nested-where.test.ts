@@ -70,3 +70,21 @@ test("NOT with empty AND child returns 1=0", () => {
   expect(result.sql).toBe("WHERE 1=0");
   expect(result.params).toEqual([]);
 });
+
+test("OR with trivially true child returns empty SQL", () => {
+  const result = buildWhere<typeof TestSchema>({ OR: [{ AND: [] }] });
+  expect(result.sql).toBe("");
+  expect(result.params).toEqual([]);
+});
+
+test("NOT with nested trivially true OR returns 1=0", () => {
+  const result = buildWhere<typeof TestSchema>({ NOT: { OR: [{ AND: [] }] } });
+  expect(result.sql).toBe("WHERE 1=0");
+  expect(result.params).toEqual([]);
+});
+
+test("AND with trivially false child returns 1=0", () => {
+  const result = buildWhere<typeof TestSchema>({ AND: [{ OR: [] }] });
+  expect(result.sql).toBe("WHERE 1=0");
+  expect(result.params).toEqual([]);
+});

@@ -88,6 +88,46 @@ function isWhereLogic(value: unknown): value is WhereLogic {
   return false;
 }
 
+function isTriviallyTrue(where: unknown): boolean {
+  if (!where || typeof where !== "object" || Object.keys(where).length === 0) {
+    return true;
+  }
+  const w = where as Record<string, unknown>;
+  const keys = Object.keys(w);
+  // { AND: [] } is trivially true
+  if (keys.length === 1 && keys[0] === "AND" && Array.isArray(w.AND) && w.AND.length === 0) {
+    return true;
+  }
+  // { OR: [...] } is trivially true if any child is trivially true
+  if (keys.length === 1 && keys[0] === "OR" && Array.isArray(w.OR) && w.OR.some(isTriviallyTrue)) {
+    return true;
+  }
+  // { NOT: x } is trivially true if x is trivially false
+  if (keys.length === 1 && keys[0] === "NOT" && isTriviallyFalse(w.NOT)) {
+    return true;
+  }
+  return false;
+}
+
+function isTriviallyFalse(where: unknown): boolean {
+  if (!where || typeof where !== "object") return false;
+  const w = where as Record<string, unknown>;
+  const keys = Object.keys(w);
+  // { OR: [] } is trivially false
+  if (keys.length === 1 && keys[0] === "OR" && Array.isArray(w.OR) && w.OR.length === 0) {
+    return true;
+  }
+  // { AND: [...] } is trivially false if any child is trivially false
+  if (keys.length === 1 && keys[0] === "AND" && Array.isArray(w.AND) && w.AND.some(isTriviallyFalse)) {
+    return true;
+  }
+  // { NOT: x } is trivially false if x is trivially true
+  if (keys.length === 1 && keys[0] === "NOT" && isTriviallyTrue(w.NOT)) {
+    return true;
+  }
+  return false;
+}
+
 function buildWhereRecursive<T extends TObject>(
   where: WhereClause<T> | undefined,
   softDeleteColumn?: string
@@ -110,6 +150,12 @@ function buildWhereRecursive<T extends TObject>(
 
     if (logic.AND) {
       for (const clause of logic.AND) {
+        if (isTriviallyTrue(clause)) continue;
+        if (isTriviallyFalse(clause)) {
+          parts.push("1=0");
+          if (parts.length === 1) return { sql: "WHERE 1=0", params: [] };
+          return { sql: `WHERE ${parts.join(" AND ")}`, params };
+        }
         const child = buildWhereRecursive(clause, undefined);
         if (child.sql) {
           parts.push(`(${child.sql.replace(/^WHERE\s+/, "")})`);
@@ -121,6 +167,11 @@ function buildWhereRecursive<T extends TObject>(
     if (logic.OR) {
       const orParts: string[] = [];
       for (const clause of logic.OR) {
+        if (isTriviallyTrue(clause)) {
+          orParts.length = 0;
+          break;
+        }
+        if (isTriviallyFalse(clause)) continue;
         const child = buildWhereRecursive(clause, undefined);
         if (child.sql) {
           orParts.push(child.sql.replace(/^WHERE\s+/, ""));
@@ -129,18 +180,20 @@ function buildWhereRecursive<T extends TObject>(
       }
       if (orParts.length > 0) {
         parts.push(`(${orParts.join(" OR ")})`);
-      } else {
+      } else if (!logic.OR.some(isTriviallyTrue)) {
         parts.push("1=0");
       }
     }
 
     if (logic.NOT) {
-      const child = buildWhereRecursive(logic.NOT, undefined);
-      if (child.sql) {
-        parts.push(`NOT (${child.sql.replace(/^WHERE\s+/, "")})`);
-        params.push(...child.params);
-      } else {
+      if (isTriviallyTrue(logic.NOT)) {
         parts.push("1=0");
+      } else if (!isTriviallyFalse(logic.NOT)) {
+        const child = buildWhereRecursive(logic.NOT, undefined);
+        if (child.sql) {
+          parts.push(`NOT (${child.sql.replace(/^WHERE\s+/, "")})`);
+          params.push(...child.params);
+        }
       }
     }
   }
