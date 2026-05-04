@@ -67,10 +67,16 @@ export interface WhereResult {
   params: unknown[];
 }
 
-export type WhereLogic = {
-  AND?: WhereClause<any>[];
-  OR?: WhereClause<any>[];
-  NOT?: WhereClause<any>;
+/**
+ * Logical operators for WHERE clauses.
+ *
+ * **Known limitation:** `AND`, `OR`, and `NOT` are reserved keys and cannot
+ * be used as column names in schemas.
+ */
+export type WhereLogic<T extends TObject = TObject> = {
+  AND?: WhereClause<T>[];
+  OR?: WhereClause<T>[];
+  NOT?: WhereClause<T>;
 };
 
 function isWhereLogic(value: unknown): value is WhereLogic {
@@ -123,6 +129,8 @@ function buildWhereRecursive<T extends TObject>(
       }
       if (orParts.length > 0) {
         parts.push(`(${orParts.join(" OR ")})`);
+      } else {
+        parts.push("1=0");
       }
     }
 
@@ -131,6 +139,8 @@ function buildWhereRecursive<T extends TObject>(
       if (child.sql) {
         parts.push(`NOT (${child.sql.replace(/^WHERE\s+/, "")})`);
         params.push(...child.params);
+      } else {
+        parts.push("1=0");
       }
     }
   }

@@ -52,3 +52,21 @@ test("nested NOT", () => {
   expect(result.sql).toBe('WHERE NOT (NOT ("name" = ?))');
   expect(result.params).toEqual(["x"]);
 });
+
+test("empty OR returns 1=0", () => {
+  const result = buildWhere<typeof TestSchema>({ OR: [] });
+  expect(result.sql).toBe("WHERE 1=0");
+  expect(result.params).toEqual([]);
+});
+
+test("NOT with empty child returns 1=0", () => {
+  const result = buildWhere<typeof TestSchema>({ NOT: {} });
+  expect(result.sql).toBe("WHERE 1=0");
+  expect(result.params).toEqual([]);
+});
+
+test("NOT with empty AND child returns 1=0", () => {
+  const result = buildWhere<typeof TestSchema>({ NOT: { AND: [] } });
+  expect(result.sql).toBe("WHERE 1=0");
+  expect(result.params).toEqual([]);
+});
