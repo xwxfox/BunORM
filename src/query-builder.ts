@@ -39,6 +39,12 @@ function escapeSqlString(value: string): string {
   return value.replace(/'/g, "''");
 }
 
+/**
+ * Resolves a dotted column path to a JSON_EXTRACT expression.
+ *
+ * **Known limitation:** column names containing dots are interpreted as JSON
+ * paths, alongside the `AND`/`OR`/`NOT` reservation in `WhereLogic`.
+ */
 function resolveJsonColumn(column: string): { sql: string } | null {
   const parts = column.split(".");
   if (parts.length < 2) return null;

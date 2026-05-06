@@ -14,6 +14,16 @@ const NestedSchema = Type.Object({
   }),
 });
 
+const Depth2Schema = Type.Object({
+  id: Type.Number(),
+  address: Type.Object({
+    city: Type.Object({
+      zip: Type.String(),
+      name: Type.String(),
+    }),
+  }),
+});
+
 test("JSON_EXTRACT for nested object path", () => {
   const result = buildWhere<typeof NestedSchema>({
     "pricing.total": { gt: 100 }
@@ -145,4 +155,56 @@ test("direct nested object ne serializes parameter as JSON", () => {
   });
   expect(result.sql).toBe('WHERE "pricing" != ?');
   expect(result.params).toEqual([JSON.stringify({ total: 100, currency: "DKK" })]);
+});
+
+test("JSON_EXTRACT for depth-2 nested path", () => {
+  const result = buildWhere<typeof Depth2Schema>({
+    "address.city.zip": { eq: "12345" }
+  });
+  expect(result.sql).toBe('WHERE JSON_EXTRACT("address", \'$.city.zip\') = ?');
+  expect(result.params).toEqual(["12345"]);
+});
+
+test("JSON_EXTRACT for depth-2 path with gt operator", () => {
+  const result = buildWhere<typeof Depth2Schema>({
+    "address.city.zip": { gt: "10000" }
+  });
+  expect(result.sql).toBe('WHERE JSON_EXTRACT("address", \'$.city.zip\') > ?');
+  expect(result.params).toEqual(["10000"]);
+});
+
+test("JSON_EXTRACT for depth-2 path with like operator", () => {
+  const result = buildWhere<typeof Depth2Schema>({
+    "address.city.name": { like: "%York%" }
+  });
+  expect(result.sql).toBe('WHERE JSON_EXTRACT("address", \'$.city.name\') LIKE ?');
+  expect(result.params).toEqual(["%York%"]);
+});
+
+test("JSON_EXTRACT for depth-2 path with in operator", () => {
+  const result = buildWhere<typeof Depth2Schema>({
+    "address.city.zip": { in: ["12345", "67890"] }
+  });
+  expect(result.sql).toBe('WHERE JSON_EXTRACT("address", \'$.city.zip\') IN (?, ?)');
+  expect(result.params).toEqual(["12345", "67890"]);
+});
+
+test("JSON_EXTRACT for depth-2 path combined with regular column", () => {
+  const result = buildWhere<typeof Depth2Schema>({
+    id: { eq: 1 },
+    "address.city.zip": { eq: "12345" }
+  });
+  expect(result.sql).toBe('WHERE "id" = ? AND JSON_EXTRACT("address", \'$.city.zip\') = ?');
+  expect(result.params).toEqual([1, "12345"]);
+});
+
+test("JSON_EXTRACT for depth-2 path inside logical operators", () => {
+  const result = buildWhere<typeof Depth2Schema>({
+    AND: [
+      { "address.city.zip": { eq: "12345" } },
+      { "address.city.name": { eq: "New York" } }
+    ]
+  });
+  expect(result.sql).toBe('WHERE (JSON_EXTRACT("address", \'$.city.zip\') = ?) AND (JSON_EXTRACT("address", \'$.city.name\') = ?)');
+  expect(result.params).toEqual(["12345", "New York"]);
 });

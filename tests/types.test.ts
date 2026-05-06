@@ -117,4 +117,28 @@ function _compileTimeChecks() {
   void nestedOrm.nested.findMany({ where: { "pricing.nonexistent": { gt: 100 } } });
 
   nestedOrm._close();
+
+  // ─── Depth-2 JSON path dotted paths are accepted in where clauses ─────────────
+
+  const Depth2Schema = Object({
+    id: Number(),
+    address: Object({
+      city: Object({ zip: String(), name: String() }),
+    }),
+  });
+  const depth2 = table(Depth2Schema, (s) => ({ primaryKey: s.id }));
+  const depth2Orm = createORM({ tables: { depth2 } });
+
+  // Valid depth-2 dotted paths should be accepted
+  depth2Orm.depth2.findMany({ where: { "address.city.zip": { eq: "12345" } } });
+  depth2Orm.depth2.findMany({ where: { "address.city.name": { like: "%York%" } } });
+  depth2Orm.depth2.findMany({ where: { "address.city.zip": { in: ["12345", "67890"] } } });
+
+  // @ts-expect-error — "address.city.nonexistent" is not a valid depth-2 dotted path
+  void depth2Orm.depth2.findMany({ where: { "address.city.nonexistent": { eq: "x" } } });
+
+  // @ts-expect-error — "address.nonexistent.zip" is not a valid depth-2 dotted path
+  void depth2Orm.depth2.findMany({ where: { "address.nonexistent.zip": { eq: "x" } } });
+
+  depth2Orm._close();
 }
