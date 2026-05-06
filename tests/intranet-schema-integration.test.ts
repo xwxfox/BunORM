@@ -3,13 +3,11 @@ import {
   Object,
   String,
   Number,
-  Integer,
   Boolean,
   Array,
   Optional,
   Union,
   Null,
-  Literal,
 } from "typebox";
 import { createORM, table } from "../src/index.ts";
 
