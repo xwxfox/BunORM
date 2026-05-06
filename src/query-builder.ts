@@ -35,38 +35,49 @@ function isFilterShape(value: unknown): value is FilterShape {
   return typeof value === "object" && value !== null;
 }
 
+function escapeSqlString(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 function resolveJsonColumn(column: string): { sql: string } | null {
   const parts = column.split(".");
   if (parts.length < 2) return null;
-  const jsonColumn = parts[0];
+  const jsonColumn = parts[0]!;
   const path = parts.slice(1).join(".");
-  return { sql: `JSON_EXTRACT("${jsonColumn}", '$.${path}')` };
+  const safeColumn = jsonColumn.replace(/"/g, '""');
+  return { sql: `JSON_EXTRACT("${safeColumn}", '$.${escapeSqlString(path)}')` };
+}
+
+/** SQLite stores nested objects as JSON TEXT; mirror that when binding params. */
+function paramValue(v: unknown): unknown {
+  if (v !== null && typeof v === "object") return JSON.stringify(v);
+  return v;
 }
 
 function buildFilter(column: string, filter: FilterShape): FilterEntry {
   const jsonCol = resolveJsonColumn(column);
   const colRef = jsonCol ? jsonCol.sql : `"${column}"`;
 
-  if ("eq" in filter) return { sql: `${colRef} = ?`, params: [filter.eq] };
-  if ("ne" in filter) return { sql: `${colRef} != ?`, params: [filter.ne] };
-  if ("gt" in filter) return { sql: `${colRef} > ?`, params: [filter.gt] };
-  if ("gte" in filter) return { sql: `${colRef} >= ?`, params: [filter.gte] };
-  if ("lt" in filter) return { sql: `${colRef} < ?`, params: [filter.lt] };
-  if ("lte" in filter) return { sql: `${colRef} <= ?`, params: [filter.lte] };
-  if ("like" in filter) return { sql: `${colRef} LIKE ?`, params: [filter.like] };
+  if ("eq" in filter) return { sql: `${colRef} = ?`, params: [paramValue(filter.eq)] };
+  if ("ne" in filter) return { sql: `${colRef} != ?`, params: [paramValue(filter.ne)] };
+  if ("gt" in filter) return { sql: `${colRef} > ?`, params: [paramValue(filter.gt)] };
+  if ("gte" in filter) return { sql: `${colRef} >= ?`, params: [paramValue(filter.gte)] };
+  if ("lt" in filter) return { sql: `${colRef} < ?`, params: [paramValue(filter.lt)] };
+  if ("lte" in filter) return { sql: `${colRef} <= ?`, params: [paramValue(filter.lte)] };
+  if ("like" in filter) return { sql: `${colRef} LIKE ?`, params: [paramValue(filter.like)] };
   if ("between" in filter) {
     const [lo, hi] = filter.between;
-    return { sql: `${colRef} BETWEEN ? AND ?`, params: [lo, hi] };
+    return { sql: `${colRef} BETWEEN ? AND ?`, params: [paramValue(lo), paramValue(hi)] };
   }
   if ("in" in filter) {
     const vals = filter.in;
     const placeholders = vals.map(() => "?").join(", ");
-    return { sql: `${colRef} IN (${placeholders})`, params: [...vals] };
+    return { sql: `${colRef} IN (${placeholders})`, params: vals.map(paramValue) };
   }
   if ("notIn" in filter) {
     const vals = filter.notIn;
     const placeholders = vals.map(() => "?").join(", ");
-    return { sql: `${colRef} NOT IN (${placeholders})`, params: [...vals] };
+    return { sql: `${colRef} NOT IN (${placeholders})`, params: vals.map(paramValue) };
   }
   if ("isNull" in filter) return { sql: `${colRef} IS NULL`, params: [] };
   if ("isNotNull" in filter) return { sql: `${colRef} IS NOT NULL`, params: [] };

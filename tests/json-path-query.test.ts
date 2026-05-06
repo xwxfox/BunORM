@@ -114,3 +114,35 @@ test("JSON_EXTRACT inside NOT with dotted path", () => {
   expect(result.sql).toBe('WHERE NOT (JSON_EXTRACT("pricing", \'$.total\') > ?)');
   expect(result.params).toEqual([100]);
 });
+
+test("JSON_EXTRACT escapes single quotes in path to prevent SQL injection", () => {
+  const result = buildWhere<typeof NestedSchema>({
+    "pricing.total': --": { eq: "malicious" }
+  } as any);
+  expect(result.sql).toBe('WHERE JSON_EXTRACT("pricing", \'$.total\'\': --\') = ?');
+  expect(result.params).toEqual(["malicious"]);
+});
+
+test("JSON_EXTRACT escapes double quotes in column name", () => {
+  const result = buildWhere<typeof NestedSchema>({
+    "pricing\"injected.total": { eq: "malicious" }
+  } as any);
+  expect(result.sql).toBe('WHERE JSON_EXTRACT("pricing""injected", \'$.total\') = ?');
+  expect(result.params).toEqual(["malicious"]);
+});
+
+test("direct nested object eq serializes parameter as JSON", () => {
+  const result = buildWhere<typeof NestedSchema>({
+    pricing: { eq: { total: 100, currency: "DKK" } }
+  });
+  expect(result.sql).toBe('WHERE "pricing" = ?');
+  expect(result.params).toEqual([JSON.stringify({ total: 100, currency: "DKK" })]);
+});
+
+test("direct nested object ne serializes parameter as JSON", () => {
+  const result = buildWhere<typeof NestedSchema>({
+    pricing: { ne: { total: 100, currency: "DKK" } }
+  });
+  expect(result.sql).toBe('WHERE "pricing" != ?');
+  expect(result.params).toEqual([JSON.stringify({ total: 100, currency: "DKK" })]);
+});

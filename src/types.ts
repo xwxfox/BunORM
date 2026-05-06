@@ -9,10 +9,14 @@ import type {
   TArray,
   TSchema,
   TProperties,
+  TOptional,
   Static,
 } from "typebox";
 import type { ColumnRef, TScalarSchema } from "./columns.ts";
 import type { TypedRelation } from "./typed-relation.ts";
+
+/** @internal */
+export type UnwrapOptional<T> = T extends TOptional<infer U> ? U : T;
 
 // ─── Primitive column types ──────────────────────────────────────────────────
 
@@ -77,11 +81,41 @@ export type ScalarPath<T extends TObject> =
   | SubTableScalarPath<T>;
 
 /** @internal */
-export type JsonPath<T extends TObject> = {
-  [K in keyof T["properties"] & string]: T["properties"][K] extends TObject
-    ? `${K}.${keyof T["properties"][K]["properties"] & string}`
+export type JsonPathLevel1<T extends TObject> = {
+  [K in keyof T["properties"] & string]: UnwrapOptional<T["properties"][K]> extends TObject
+    ? `${K}.${keyof UnwrapOptional<T["properties"][K]>["properties"] & string}`
     : never;
 }[keyof T["properties"] & string];
+
+/** @internal */
+export type JsonPathLevel2<T extends TObject> = {
+  [K in keyof T["properties"] & string]: UnwrapOptional<T["properties"][K]> extends TObject
+    ? {
+        [K2 in keyof UnwrapOptional<T["properties"][K]>["properties"] & string]: UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]> extends TObject
+          ? `${K}.${K2}.${keyof UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"] & string}`
+          : never
+      }[keyof UnwrapOptional<T["properties"][K]>["properties"] & string]
+    : never;
+}[keyof T["properties"] & string];
+
+/** @internal */
+export type JsonPath<T extends TObject> = JsonPathLevel1<T> | JsonPathLevel2<T>;
+
+/** @internal */
+export type PathValue<T extends TObject, P extends string> =
+  P extends `${infer K}.${infer Rest}`
+  ? UnwrapOptional<T["properties"][K]> extends TObject
+    ? Rest extends `${infer K2}.${infer Rest2}`
+      ? UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]> extends TObject
+        ? UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][Rest2] extends TSchema
+          ? Static<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][Rest2]>
+          : never
+        : never
+      : UnwrapOptional<T["properties"][K]>["properties"][Rest] extends TSchema
+      ? Static<UnwrapOptional<T["properties"][K]>["properties"][Rest]>
+      : never
+    : never
+  : never;
 
 // ─── Static inference shortcuts ──────────────────────────────────────────────
 
@@ -176,7 +210,7 @@ export type ScalarFilter<V> = V extends string
 export type WhereClause<T extends TObject> = {
   [K in ScalarKeys<T>]?: ScalarFilter<Static<T["properties"][K]>>;
 } & {
-  [K in JsonPath<T>]?: ScalarFilter<any>;
+  [K in JsonPath<T>]?: ScalarFilter<PathValue<T, K>>;
 } & {
   AND?: WhereClause<T>[];
   OR?: WhereClause<T>[];
