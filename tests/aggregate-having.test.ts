@@ -48,8 +48,8 @@ describe("aggregate with HAVING", () => {
     });
     expect(rows).toHaveLength(2);
     const byStatus = globalThis.Object.fromEntries(rows.map((r) => [r.status, r]));
-    expect(byStatus.pending.total).toBe(300);
-    expect(byStatus.completed.total).toBe(700);
+    expect(byStatus.pending?.total).toBe(300);
+    expect(byStatus.completed?.total).toBe(700);
   });
 
   test("having excludes groups below threshold", () => {

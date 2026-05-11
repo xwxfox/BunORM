@@ -29,15 +29,15 @@ export type IsOptionalKey<O, K extends keyof O> = {} extends Pick<O, K> ? true :
 /** @internal */
 export type MergePath<O, P extends string> = P extends `${infer K}.${infer Rest}`
   ? K extends keyof O
-    ? IsOptionalKey<O, K> extends true
-      ? { [k in K]?: MergePath<NonNullable<O[K]>, Rest> }
-      : { [k in K]: MergePath<NonNullable<O[K]>, Rest> }
-    : never
+  ? IsOptionalKey<O, K> extends true
+  ? { [k in K]?: MergePath<NonNullable<O[K]>, Rest> }
+  : { [k in K]: MergePath<NonNullable<O[K]>, Rest> }
+  : never
   : P extends keyof O
-    ? IsOptionalKey<O, P> extends true
-      ? { [k in P]?: O[P] }
-      : { [k in P]: O[P] }
-    : never;
+  ? IsOptionalKey<O, P> extends true
+  ? { [k in P]?: O[P] }
+  : { [k in P]: O[P] }
+  : never;
 
 /** @internal */
 export type SelectShape<T extends TSchema & { properties: Record<string, TSchema> }, S extends readonly string[]> =
@@ -86,8 +86,8 @@ export type ObjectKeys<T extends TSchema & { properties: Record<string, TSchema>
 /** @internal */
 export type PrimitiveArrayKeys<T extends TSchema & { properties: Record<string, TSchema> }> = {
   [K in keyof T["properties"] & string]: UnwrapOptional<T["properties"][K]> extends TArray<infer Item>
-    ? Item extends TScalarSchema ? K : never
-    : never;
+  ? Item extends TScalarSchema ? K : never
+  : never;
 }[keyof T["properties"] & string];
 
 /**
@@ -120,34 +120,34 @@ export type ScalarPath<T extends TSchema & { properties: Record<string, TSchema>
 /** @internal */
 export type JsonPathLevel1<T extends TSchema & { properties: Record<string, TSchema> }> = {
   [K in keyof T["properties"] & string]: UnwrapOptional<T["properties"][K]> extends { properties: Record<string, TSchema> }
-    ? `${K}.${keyof UnwrapOptional<T["properties"][K]>["properties"] & string}`
-    : never;
+  ? `${K}.${keyof UnwrapOptional<T["properties"][K]>["properties"] & string}`
+  : never;
 }[keyof T["properties"] & string];
 
 /** @internal */
 export type JsonPathLevel2<T extends TSchema & { properties: Record<string, TSchema> }> = {
   [K in keyof T["properties"] & string]: UnwrapOptional<T["properties"][K]> extends { properties: Record<string, TSchema> }
-    ? {
-        [K2 in keyof UnwrapOptional<T["properties"][K]>["properties"] & string]: UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]> extends { properties: Record<string, TSchema> }
-          ? `${K}.${K2}.${keyof UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"] & string}`
-          : never
-      }[keyof UnwrapOptional<T["properties"][K]>["properties"] & string]
-    : never;
+  ? {
+    [K2 in keyof UnwrapOptional<T["properties"][K]>["properties"] & string]: UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]> extends { properties: Record<string, TSchema> }
+    ? `${K}.${K2}.${keyof UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"] & string}`
+    : never
+  }[keyof UnwrapOptional<T["properties"][K]>["properties"] & string]
+  : never;
 }[keyof T["properties"] & string];
 
 /** @internal */
 export type JsonPathLevel3<T extends TSchema & { properties: Record<string, TSchema> }> = {
   [K in keyof T["properties"] & string]: UnwrapOptional<T["properties"][K]> extends { properties: Record<string, TSchema> }
+  ? {
+    [K2 in keyof UnwrapOptional<T["properties"][K]>["properties"] & string]: UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]> extends { properties: Record<string, TSchema> }
     ? {
-        [K2 in keyof UnwrapOptional<T["properties"][K]>["properties"] & string]: UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]> extends { properties: Record<string, TSchema> }
-          ? {
-              [K3 in keyof UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"] & string]: UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]> extends { properties: Record<string, TSchema> }
-                ? `${K}.${K2}.${K3}.${keyof UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]>["properties"] & string}`
-                : never
-            }[keyof UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"] & string]
-          : never
-      }[keyof UnwrapOptional<T["properties"][K]>["properties"] & string]
-    : never;
+      [K3 in keyof UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"] & string]: UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]> extends { properties: Record<string, TSchema> }
+      ? `${K}.${K2}.${K3}.${keyof UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]>["properties"] & string}`
+      : never
+    }[keyof UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"] & string]
+    : never
+  }[keyof UnwrapOptional<T["properties"][K]>["properties"] & string]
+  : never;
 }[keyof T["properties"] & string];
 
 /** @internal */
@@ -156,34 +156,34 @@ export type JsonPath<T extends TSchema & { properties: Record<string, TSchema> }
 /** @internal */
 export type ScalarJsonPathLevel1<T extends TSchema & { properties: Record<string, TSchema> }> = {
   [K in keyof T["properties"] & string]: UnwrapOptional<T["properties"][K]> extends TObject<infer P>
-    ? { [K2 in keyof P & string]: UnwrapOptional<P[K2]> extends TScalarSchema ? `${K}.${K2}` : never }[keyof P & string]
-    : never;
+  ? { [K2 in keyof P & string]: UnwrapOptional<P[K2]> extends TScalarSchema ? `${K}.${K2}` : never }[keyof P & string]
+  : never;
 }[keyof T["properties"] & string];
 
 /** @internal */
 export type ScalarJsonPathLevel2<T extends TSchema & { properties: Record<string, TSchema> }> = {
   [K in keyof T["properties"] & string]: UnwrapOptional<T["properties"][K]> extends TObject<infer P>
-    ? {
-        [K2 in keyof P & string]: UnwrapOptional<P[K2]> extends TObject<infer P2>
-          ? { [K3 in keyof P2 & string]: UnwrapOptional<P2[K3]> extends TScalarSchema ? `${K}.${K2}.${K3}` : never }[keyof P2 & string]
-          : never
-      }[keyof P & string]
-    : never;
+  ? {
+    [K2 in keyof P & string]: UnwrapOptional<P[K2]> extends TObject<infer P2>
+    ? { [K3 in keyof P2 & string]: UnwrapOptional<P2[K3]> extends TScalarSchema ? `${K}.${K2}.${K3}` : never }[keyof P2 & string]
+    : never
+  }[keyof P & string]
+  : never;
 }[keyof T["properties"] & string];
 
 /** @internal */
 export type ScalarJsonPathLevel3<T extends TSchema & { properties: Record<string, TSchema> }> = {
   [K in keyof T["properties"] & string]: UnwrapOptional<T["properties"][K]> extends TObject<infer P>
+  ? {
+    [K2 in keyof P & string]: UnwrapOptional<P[K2]> extends TObject<infer P2>
     ? {
-        [K2 in keyof P & string]: UnwrapOptional<P[K2]> extends TObject<infer P2>
-          ? {
-              [K3 in keyof P2 & string]: UnwrapOptional<P2[K3]> extends TObject<infer P3>
-                ? { [K4 in keyof P3 & string]: UnwrapOptional<P3[K4]> extends TScalarSchema ? `${K}.${K2}.${K3}.${K4}` : never }[keyof P3 & string]
-                : never
-            }[keyof P2 & string]
-          : never
-      }[keyof P & string]
-    : never;
+      [K3 in keyof P2 & string]: UnwrapOptional<P2[K3]> extends TObject<infer P3>
+      ? { [K4 in keyof P3 & string]: UnwrapOptional<P3[K4]> extends TScalarSchema ? `${K}.${K2}.${K3}.${K4}` : never }[keyof P3 & string]
+      : never
+    }[keyof P2 & string]
+    : never
+  }[keyof P & string]
+  : never;
 }[keyof T["properties"] & string];
 
 /** @internal */
@@ -194,22 +194,22 @@ export type ScalarJsonPath<T extends TSchema & { properties: Record<string, TSch
 export type PathValue<T extends TSchema & { properties: Record<string, TSchema> }, P extends string> =
   P extends `${infer K}.${infer Rest}`
   ? UnwrapOptional<T["properties"][K]> extends { properties: Record<string, TSchema> }
-    ? Rest extends `${infer K2}.${infer Rest2}`
-      ? UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]> extends { properties: Record<string, TSchema> }
-        ? Rest2 extends `${infer K3}.${infer Rest3}`
-          ? UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]> extends { properties: Record<string, TSchema> }
-            ? UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]>["properties"][Rest3] extends TSchema
-              ? Static<UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]>["properties"][Rest3]>
-              : never
-            : never
-          : UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][Rest2] extends TSchema
-            ? Static<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][Rest2]>
-            : never
-        : never
-      : UnwrapOptional<T["properties"][K]>["properties"][Rest] extends TSchema
-      ? Static<UnwrapOptional<T["properties"][K]>["properties"][Rest]>
-      : never
-    : never
+  ? Rest extends `${infer K2}.${infer Rest2}`
+  ? UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]> extends { properties: Record<string, TSchema> }
+  ? Rest2 extends `${infer K3}.${infer Rest3}`
+  ? UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]> extends { properties: Record<string, TSchema> }
+  ? UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]>["properties"][Rest3] extends TSchema
+  ? Static<UnwrapOptional<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][K3]>["properties"][Rest3]>
+  : never
+  : never
+  : UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][Rest2] extends TSchema
+  ? Static<UnwrapOptional<UnwrapOptional<T["properties"][K]>["properties"][K2]>["properties"][Rest2]>
+  : never
+  : never
+  : UnwrapOptional<T["properties"][K]>["properties"][Rest] extends TSchema
+  ? Static<UnwrapOptional<T["properties"][K]>["properties"][Rest]>
+  : never
+  : never
   : P extends keyof T["properties"]
   ? Static<T["properties"][P]>
   : never;
@@ -318,20 +318,20 @@ export type ScalarFilter<V> = unknown extends V
  * @category Query Types
  * @category Query Types
  */
-export type WhereClause<T extends TSchema & { properties: Record<string, TSchema> }> = {
+export type WhereClause<T extends TSchema & {
+  properties: Record<string, TSchema>
+}> = {
   [K in ScalarKeys<T>]?: ScalarFilter<Static<T["properties"][K]>>;
 } & {
-  [K in ObjectKeys<T>]?: ScalarFilter<Static<T["properties"][K]>>;
-} & {
-  [K in JsonPath<T>]?: ScalarFilter<PathValue<T, K>>;
-} & {
-  AND?: WhereClause<T>[];
-  OR?: WhereClause<T>[];
-  NOT?: WhereClause<T>;
-  _raw?: { sql: string; params: unknown[] };
-} & {
-  [key: string]: ScalarFilter<unknown> | WhereClause<T>[] | { sql: string; params: unknown[] } | undefined;
-};
+    [K in ObjectKeys<T>]?: ScalarFilter<Static<T["properties"][K]>>;
+  } & {
+    [K in JsonPath<T>]?: ScalarFilter<PathValue<T, K>>;
+  } & {
+    AND?: WhereClause<T>[];
+    OR?: WhereClause<T>[];
+    NOT?: WhereClause<T>;
+    _raw?: { sql: string; params: unknown[] };
+  };
 
 // ─── OrderBy ─────────────────────────────────────────────────────────────────
 

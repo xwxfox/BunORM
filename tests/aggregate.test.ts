@@ -86,10 +86,10 @@ describe("repository.aggregate", () => {
     });
     expect(rows).toHaveLength(2);
     const byStatus = globalThis.Object.fromEntries(rows.map((r) => [r.status, r]));
-    expect(byStatus.pending.total).toBe(300);
-    expect(byStatus.pending.count).toBe(2);
-    expect(byStatus.completed.total).toBe(700);
-    expect(byStatus.completed.count).toBe(2);
+    expect(byStatus.pending?.total).toBe(300);
+    expect(byStatus.pending?.count).toBe(2);
+    expect(byStatus.completed?.total).toBe(700);
+    expect(byStatus.completed?.count).toBe(2);
   });
 
   test("where filter with aggregation", () => {
