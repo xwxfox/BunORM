@@ -5,6 +5,7 @@
  */
 
 import type { TObject, TSchema } from "typebox";
+import type { SQLQueryBindings } from "./database.ts";
 import type {
   WhereClause,
   OrderByClause,
@@ -15,10 +16,12 @@ import { raise } from "./errors.ts";
 
 // ─── WHERE builder ────────────────────────────────────────────────────────────
 
-type FilterEntry = { sql: string; params: unknown[] };
+type FilterEntry = { sql: string; params: SQLQueryBindings[] };
 
-/** Runtime shape of any filter - independent of the column's value type */
-type FilterShape =
+/**
+ * Runtime shape of any filter - independent of the column's value type
+ */
+export type FilterShape =
   | { eq: unknown }
   | { ne: unknown }
   | { gt: unknown }
@@ -51,13 +54,11 @@ function resolveJsonColumn(column: string, meta?: TableMeta): { sql: string } | 
   if (parts.length < 2) return null;
 
   if (meta) {
-    // O(1) lookup for flattened columns
     const flatCol = meta.columnByPath.get(column);
     if (flatCol) {
       return { sql: `"${flatCol.name}"` };
     }
 
-    // Find longest prefix path that matches a JSON TEXT column
     for (let i = parts.length - 1; i >= 1; i--) {
       const prefixPath = parts.slice(0, i).join(".");
       const remainingPath = parts.slice(i).join(".");
@@ -76,9 +77,9 @@ function resolveJsonColumn(column: string, meta?: TableMeta): { sql: string } | 
 }
 
 /** SQLite stores nested objects as JSON TEXT; mirror that when binding params. */
-function paramValue(v: unknown): unknown {
+function paramValue(v: unknown): SQLQueryBindings {
   if (v !== null && typeof v === "object") return JSON.stringify(v);
-  return v;
+  return v as SQLQueryBindings;
 }
 
 export function buildFilter(column: string, filter: FilterShape, meta?: TableMeta): FilterEntry {
@@ -112,8 +113,8 @@ export function buildFilter(column: string, filter: FilterShape, meta?: TableMet
 }
 
 export interface WhereResult {
-  sql: string;      // "WHERE ..." or ""
-  params: unknown[];
+  sql: string;
+  params: SQLQueryBindings[];
 }
 
 /**
@@ -138,20 +139,17 @@ function isWhereLogic(value: unknown): value is WhereLogic {
 }
 
 function isTriviallyTrue(where: unknown): boolean {
-  if (!where || typeof where !== "object" || Object.keys(where).length === 0) {
+  if (!where || typeof where !== "object" || Object.keys(where as Record<string, unknown>).length === 0) {
     return true;
   }
   const w = where as Record<string, unknown>;
   const keys = Object.keys(w);
-  // { AND: [] } is trivially true
   if (keys.length === 1 && keys[0] === "AND" && Array.isArray(w.AND) && w.AND.length === 0) {
     return true;
   }
-  // { OR: [...] } is trivially true if any child is trivially true
   if (keys.length === 1 && keys[0] === "OR" && Array.isArray(w.OR) && w.OR.some(isTriviallyTrue)) {
     return true;
   }
-  // { NOT: x } is trivially true if x is trivially false
   if (keys.length === 1 && keys[0] === "NOT" && isTriviallyFalse(w.NOT)) {
     return true;
   }
@@ -162,15 +160,12 @@ function isTriviallyFalse(where: unknown): boolean {
   if (!where || typeof where !== "object") return false;
   const w = where as Record<string, unknown>;
   const keys = Object.keys(w);
-  // { OR: [] } is trivially false
   if (keys.length === 1 && keys[0] === "OR" && Array.isArray(w.OR) && w.OR.length === 0) {
     return true;
   }
-  // { AND: [...] } is trivially false if any child is trivially false
   if (keys.length === 1 && keys[0] === "AND" && Array.isArray(w.AND) && w.AND.some(isTriviallyFalse)) {
     return true;
   }
-  // { NOT: x } is trivially false if x is trivially true
   if (keys.length === 1 && keys[0] === "NOT" && isTriviallyTrue(w.NOT)) {
     return true;
   }
@@ -179,11 +174,11 @@ function isTriviallyFalse(where: unknown): boolean {
 
 function buildWhereRecursive<T extends TSchema & { properties: Record<string, TSchema> }>(
   where: WhereClause<T> | undefined,
-  softDeleteColumn?: string,
-  meta?: TableMeta
-): { sql: string; params: unknown[] } {
+  softDeleteColumn: string | undefined,
+  meta: TableMeta | undefined
+): { sql: string; params: SQLQueryBindings[] } {
   const parts: string[] = [];
-  const params: unknown[] = [];
+  const params: SQLQueryBindings[] = [];
 
   if (softDeleteColumn) {
     parts.push(`"${softDeleteColumn}" IS NULL`);
@@ -194,7 +189,6 @@ function buildWhereRecursive<T extends TSchema & { properties: Record<string, TS
     return { sql: `WHERE ${parts.join(" AND ")}`, params };
   }
 
-  // Handle logical operators first
   if (isWhereLogic(where)) {
     const logic = where as WhereLogic;
 
@@ -216,7 +210,7 @@ function buildWhereRecursive<T extends TSchema & { properties: Record<string, TS
 
     if (logic.OR) {
       const orParts: string[] = [];
-      const orParams: unknown[] = [];
+      const orParams: SQLQueryBindings[] = [];
       for (const clause of logic.OR) {
         if (isTriviallyTrue(clause)) {
           orParts.length = 0;
@@ -250,15 +244,13 @@ function buildWhereRecursive<T extends TSchema & { properties: Record<string, TS
     }
   }
 
-  // Handle raw SQL escape hatch
   const rawFilter = (where as Record<string, unknown>)._raw;
   if (rawFilter && typeof rawFilter === "object" && "sql" in rawFilter) {
-    const raw = rawFilter as { sql: string; params?: unknown[] };
+    const raw = rawFilter as { sql: string; params?: SQLQueryBindings[] };
     parts.push(`(${raw.sql})`);
     params.push(...(raw.params ?? []));
   }
 
-  // Handle column filters
   for (const [col, filter] of Object.entries(where)) {
     if (col === "AND" || col === "OR" || col === "NOT" || col === "_raw") continue;
     if (!isFilterShape(filter)) continue;
@@ -273,20 +265,19 @@ function buildWhereRecursive<T extends TSchema & { properties: Record<string, TS
 
 export function buildWhere<T extends TSchema & { properties: Record<string, TSchema> }>(
   where: WhereClause<T> | undefined,
-  softDeleteColumn?: string,
-  meta?: TableMeta
+  softDeleteColumn: string | undefined,
+  meta: TableMeta | undefined
 ): WhereResult {
   return buildWhereRecursive(where, softDeleteColumn, meta);
 }
 
 // ─── ORDER BY builder ─────────────────────────────────────────────────────────
 
-export function resolveOrderByColumn(column: string, meta?: TableMeta): string {
+export function resolveOrderByColumn(column: string, meta: TableMeta | undefined): string {
   if (!meta) return `"${column}"`;
   const flatCol = meta.columnByPath.get(column);
   if (flatCol) return `"${flatCol.name}"`;
 
-  // Find longest prefix path that matches a JSON TEXT column
   const parts = column.split(".");
   for (let i = parts.length - 1; i >= 1; i--) {
     const prefixPath = parts.slice(0, i).join(".");
@@ -303,7 +294,7 @@ export function resolveOrderByColumn(column: string, meta?: TableMeta): string {
 
 export function buildOrderBy<T extends TSchema & { properties: Record<string, TSchema> }>(
   orderBy: FindOptions<T>["orderBy"],
-  meta?: TableMeta
+  meta: TableMeta | undefined
 ): string {
   if (!orderBy) return "";
   const clauses: OrderByClause<T>[] = globalThis.Array.isArray(orderBy) ? orderBy : [orderBy];
@@ -318,11 +309,11 @@ export function buildOrderBy<T extends TSchema & { properties: Record<string, TS
 // ─── LIMIT / OFFSET ───────────────────────────────────────────────────────────
 
 export function buildLimitOffset(
-  limit?: number,
-  offset?: number
-): { sql: string; params: unknown[] } {
+  limit: number | undefined,
+  offset: number | undefined
+): { sql: string; params: SQLQueryBindings[] } {
   const parts: string[] = [];
-  const params: unknown[] = [];
+  const params: SQLQueryBindings[] = [];
   if (limit !== undefined) {
     parts.push("LIMIT ?");
     params.push(limit);
@@ -338,24 +329,21 @@ export function buildLimitOffset(
 
 export interface SelectResult {
   sql: string;
-  params: unknown[];
+  params: SQLQueryBindings[];
   countSql: string;
-  countParams: unknown[];
+  countParams: SQLQueryBindings[];
 }
 
 function resolveSelectColumn(column: string, meta: TableMeta): string[] {
-  // 1. Exact match on a real column (scalar, flattened, or JSON TEXT)
   const exact = meta.columnByName.get(column) || meta.columnByPath.get(column);
   if (exact) return [`"${exact.name}"`];
 
-  // 2. Top-level object name (e.g. "Status") → select all its flattened children
   const children: string[] = [];
   for (const col of meta.columns) {
     if (col.path && col.path[0] === column) children.push(`"${col.name}"`);
   }
   if (children.length > 0) return children;
 
-  // 3. Dotted path deeper than flattened depth → JSON_EXTRACT with __ alias
   const parts = column.split(".");
   for (let i = parts.length - 1; i >= 1; i--) {
     const prefix = parts.slice(0, i).join(".");
@@ -369,15 +357,14 @@ function resolveSelectColumn(column: string, meta: TableMeta): string[] {
     }
   }
 
-  // Fallback
   return [`"${column}"`];
 }
 
 export function buildSelectSql<T extends TSchema & { properties: Record<string, TSchema> }>(
   tableName: string,
   opts: FindOptions<T>,
-  softDeleteColumn?: string,
-  meta?: TableMeta
+  softDeleteColumn: string | undefined,
+  meta: TableMeta | undefined
 ): SelectResult {
   const { sql: whereSql, params: whereParams } = buildWhere(
     opts.where,
@@ -455,8 +442,8 @@ export function buildSelectSql<T extends TSchema & { properties: Record<string, 
 export function buildSelect<T extends TSchema & { properties: Record<string, TSchema> }>(
   tableName: string,
   opts: FindOptions<T>,
-  softDeleteColumn?: string,
-  meta?: TableMeta
+  softDeleteColumn: string | undefined,
+  meta: TableMeta | undefined
 ): SelectResult {
   return buildSelectSql(tableName, opts, softDeleteColumn, meta);
 }
@@ -466,13 +453,13 @@ export function buildSelect<T extends TSchema & { properties: Record<string, TSc
 export function buildInsert(
   tableName: string,
   row: Record<string, unknown>
-): { sql: string; params: unknown[] } {
+): { sql: string; params: SQLQueryBindings[] } {
   const keys = Object.keys(row);
   const cols = keys.map((k) => `"${k}"`).join(", ");
   const placeholders = keys.map(() => "?").join(", ");
   return {
     sql: `INSERT INTO "${tableName}" (${cols}) VALUES (${placeholders})`,
-    params: keys.map((k) => row[k]),
+    params: keys.map((k) => row[k] as SQLQueryBindings),
   };
 }
 
@@ -480,7 +467,7 @@ export function buildInsertMany(
   tableName: string,
   rows: Record<string, unknown>[],
   maxParams = 999
-): Array<{ sql: string; params: unknown[] }> {
+): Array<{ sql: string; params: SQLQueryBindings[] }> {
   if (rows.length === 0) return [];
   const first = rows[0]!;
   const keys = Object.keys(first);
@@ -489,7 +476,7 @@ export function buildInsertMany(
   if (maxRowsPerStmt <= 0) {
     raise("TOO_MANY_COLUMNS", `foxdb: table "${tableName}" has too many columns for multi-value insert`);
   }
-  const batches: Array<{ sql: string; params: unknown[] }> = [];
+  const batches: Array<{ sql: string; params: SQLQueryBindings[] }> = [];
   for (let i = 0; i < rows.length; i += maxRowsPerStmt) {
     const batch = rows.slice(i, i + maxRowsPerStmt);
     const cols = keys.map((k) => `"${k}"`).join(", ");
@@ -497,7 +484,7 @@ export function buildInsertMany(
       const ph = keys.map(() => "?").join(", ");
       return `(${ph})`;
     }).join(", ");
-    const params = batch.flatMap((row) => keys.map((k) => row[k]));
+    const params = batch.flatMap((row) => keys.map((k) => row[k] as SQLQueryBindings));
     batches.push({ sql: `INSERT INTO "${tableName}" (${cols}) VALUES ${valueGroups}`, params });
   }
   return batches;
@@ -510,7 +497,7 @@ export function buildUpsert(
   row: Record<string, unknown>,
   conflictCols: string[],
   updateCols: string[]
-): { sql: string; params: unknown[] } {
+): { sql: string; params: SQLQueryBindings[] } {
   const keys = Object.keys(row);
   const cols = keys.map((k) => `"${k}"`).join(", ");
   const placeholders = keys.map(() => "?").join(", ");
@@ -521,7 +508,7 @@ export function buildUpsert(
 
   return {
     sql: `INSERT INTO "${tableName}" (${cols}) VALUES (${placeholders}) ON CONFLICT (${conflict}) DO UPDATE SET ${updates}`,
-    params: keys.map((k) => row[k]),
+    params: keys.map((k) => row[k] as SQLQueryBindings),
   };
 }
 
@@ -531,7 +518,7 @@ export function buildUpsertMany(
   conflictCols: string[],
   updateCols: string[],
   maxParams = 999
-): Array<{ sql: string; params: unknown[] }> {
+): Array<{ sql: string; params: SQLQueryBindings[] }> {
   if (rows.length === 0) return [];
   const first = rows[0]!;
   const keys = Object.keys(first);
@@ -544,7 +531,7 @@ export function buildUpsertMany(
   const updates = updateCols
     .map((c) => `"${c}" = excluded."${c}"`)
     .join(", ");
-  const batches: Array<{ sql: string; params: unknown[] }> = [];
+  const batches: Array<{ sql: string; params: SQLQueryBindings[] }> = [];
   for (let i = 0; i < rows.length; i += maxRowsPerStmt) {
     const batch = rows.slice(i, i + maxRowsPerStmt);
     const cols = keys.map((k) => `"${k}"`).join(", ");
@@ -552,7 +539,7 @@ export function buildUpsertMany(
       const ph = keys.map(() => "?").join(", ");
       return `(${ph})`;
     }).join(", ");
-    const params = batch.flatMap((row) => keys.map((k) => row[k]));
+    const params = batch.flatMap((row) => keys.map((k) => row[k] as SQLQueryBindings));
     batches.push({
       sql: `INSERT INTO "${tableName}" (${cols}) VALUES ${valueGroups} ON CONFLICT (${conflict}) DO UPDATE SET ${updates}`,
       params,
@@ -568,7 +555,7 @@ export function buildUpdate<T extends TSchema & { properties: Record<string, TSc
   pk: string,
   pkValue: unknown,
   patch: Record<string, unknown>
-): { sql: string; params: unknown[] } {
+): { sql: string; params: SQLQueryBindings[] } {
   const entries = Object.entries(patch).filter(([k]) => k !== pk);
   if (entries.length === 0) {
     raise("NO_COLUMNS_TO_UPDATE", "foxdb: no columns to update", { table: tableName });
@@ -576,7 +563,7 @@ export function buildUpdate<T extends TSchema & { properties: Record<string, TSc
   const sets = entries.map(([k]) => `"${k}" = ?`).join(", ");
   return {
     sql: `UPDATE "${tableName}" SET ${sets} WHERE "${pk}" = ?`,
-    params: [...entries.map(([, v]) => v), pkValue],
+    params: [...entries.map(([, v]) => v as SQLQueryBindings), pkValue as SQLQueryBindings],
   };
 }
 
@@ -584,9 +571,9 @@ export function buildUpdateWhere<T extends TSchema & { properties: Record<string
   tableName: string,
   patch: Record<string, unknown>,
   where: WhereClause<T>,
-  softDeleteColumn?: string,
-  meta?: TableMeta
-): { sql: string; params: unknown[] } {
+  softDeleteColumn: string | undefined,
+  meta: TableMeta | undefined
+): { sql: string; params: SQLQueryBindings[] } {
   const entries = Object.entries(patch);
   if (entries.length === 0) {
     raise("NO_COLUMNS_TO_UPDATE", "foxdb: no columns to update", { table: tableName });
@@ -595,7 +582,7 @@ export function buildUpdateWhere<T extends TSchema & { properties: Record<string
   const { sql: whereSql, params: whereParams } = buildWhere(where, softDeleteColumn, meta);
   return {
     sql: `UPDATE "${tableName}" SET ${sets} ${whereSql}`.trim(),
-    params: [...entries.map(([, v]) => v), ...whereParams],
+    params: [...entries.map(([, v]) => v as SQLQueryBindings), ...whereParams],
   };
 }
 
@@ -604,8 +591,8 @@ export function buildUpdateWhere<T extends TSchema & { properties: Record<string
 export function buildDelete<T extends TSchema & { properties: Record<string, TSchema> }>(
   tableName: string,
   where: WhereClause<T>,
-  meta?: TableMeta
-): { sql: string; params: unknown[] } {
+  meta: TableMeta | undefined
+): { sql: string; params: SQLQueryBindings[] } {
   const { sql: whereSql, params } = buildWhere(where, undefined, meta);
   return {
     sql: `DELETE FROM "${tableName}" ${whereSql}`.trim(),

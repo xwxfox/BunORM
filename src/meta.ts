@@ -2,12 +2,11 @@
  * foxdb/src/meta.ts
  * TypeBox-backed metadata store for foxdb.
  *
- * Zero tolerance for type casts (`as`), `unknown`, or untyped strings.
  * Every DB row is validated at runtime with Schema.Compile.
  */
 
 import { Type, type Static, type TSchema } from "typebox";
-import Schema, { type Validator } from "typebox/schema";
+import { Compile, type Validator } from "typebox/schema";
 import { BunDatabase } from "./database.ts";
 
 // ─── Row schema ───────────────────────────────────────────────────────────────
@@ -19,7 +18,7 @@ const MetaRecordSchema = Type.Object({
   updatedAt: Type.Integer(),
 });
 
-const MetaCompiled = Schema.Compile(MetaRecordSchema);
+const MetaCompiled = Compile(MetaRecordSchema);
 
 type MetaRecord = Static<typeof MetaRecordSchema>;
 
@@ -27,9 +26,6 @@ type MetaRecord = Static<typeof MetaRecordSchema>;
 
 const SchemaHashSchema = Type.String();
 
-// Stored schema JSON is Record<string, TObject> - we can't deeply validate
-// TypeBox schemas at runtime without the compiler, so we accept any object.
-/** @category Database */
 export const SchemaJSONSchema = Type.Record(Type.String(), Type.Unknown());
 
 const TablesSchema = Type.Array(Type.String());
@@ -47,15 +43,13 @@ const RelationsSchema = Type.Array(
 
 const VersionSchema = Type.String();
 
-// Compiled validators for typed accessors
-const SchemaHashCompiled = Schema.Compile(SchemaHashSchema);
-const SchemaJSONCompiled = Schema.Compile(SchemaJSONSchema);
-const TablesCompiled = Schema.Compile(TablesSchema);
-const RelationsCompiled = Schema.Compile(RelationsSchema);
-const VersionCompiled = Schema.Compile(VersionSchema);
+const SchemaHashCompiled = Compile(SchemaHashSchema);
+const SchemaJSONCompiled = Compile(SchemaJSONSchema);
+const TablesCompiled = Compile(TablesSchema);
+const RelationsCompiled = Compile(RelationsSchema);
+const VersionCompiled = Compile(VersionSchema);
 
 type SchemaHash = Static<typeof SchemaHashSchema>;
-/** @category Database */
 export type SchemaJSON = Static<typeof SchemaJSONSchema>;
 type TablesList = Static<typeof TablesSchema>;
 type RelationsList = Static<typeof RelationsSchema>;
@@ -67,7 +61,7 @@ const ENCODING_PLAIN = "plain";
 const ENCODING_JSON = "json";
 const ENCODING_DEFLATE_BASE64 = "deflate-base64";
 
-// ─── MetaStore ────────────────────────────────────────────────────────────────
+// ─── MetaStore ───────────────────────────────────────────────────────────────
 
 /** @category Database */
 export class MetaStore {
@@ -122,31 +116,27 @@ export class MetaStore {
     stmt.run(key, value, encoding, Date.now());
   }
 
-  private getValidatedJSON<T extends TSchema>(
+  private getValidatedJSON<S extends TSchema>(
     key: string,
-    validator: Validator<T, Static<T>>
-  ): Static<T> | null {
-    const row = this.getRow(key);
-    if (row == null) return null;
-    const parsed = JSON.parse(row.value);
-    try {
-      return validator.Parse(parsed);
-    } catch {
+    validator: Validator<S>,
+    jsonString: string
+  ): Static<S> | null {
+    const parsed = JSON.parse(jsonString);
+    if (!validator.Check(parsed)) {
       const [, errors] = validator.Errors(parsed);
       throw new Error(
         `MetaStore: JSON validation failed for key "${key}". Errors: ${JSON.stringify(errors)}`
       );
     }
+    return parsed as Static<S>;
   }
 
-  private setValidatedJSON<T extends TSchema>(
+  private validateAndSetJSON<S extends TSchema>(
     key: string,
-    validator: Validator<T, Static<T>>,
-    value: Static<T>
+    validator: Validator<S>,
+    value: Static<S>
   ): void {
-    try {
-      validator.Parse(value);
-    } catch {
+    if (!validator.Check(value)) {
       const [, errors] = validator.Errors(value);
       throw new Error(
         `MetaStore: JSON validation failed for key "${key}" before write. Errors: ${JSON.stringify(errors)}`
@@ -173,7 +163,7 @@ export class MetaStore {
     const row = this.getRow(key);
     if (row == null) return null;
     try {
-      return JSON.parse(row.value);
+      return JSON.parse(row.value) as T;
     } catch {
       return null;
     }
@@ -210,42 +200,52 @@ export class MetaStore {
   // ─── Typed accessors ────────────────────────────────────────────────────────
 
   getSchemaHash(): SchemaHash | null {
-    return this.getString(MetaStore.KEY_SCHEMA_HASH);
+    const row = this.getRow(MetaStore.KEY_SCHEMA_HASH);
+    if (row == null) return null;
+    return row.value as SchemaHash;
   }
 
   setSchemaHash(value: SchemaHash): void {
-    this.setString(MetaStore.KEY_SCHEMA_HASH, value);
+    this.setRow(MetaStore.KEY_SCHEMA_HASH, value as string, ENCODING_PLAIN);
   }
 
   getSchemaJSON(): SchemaJSON | null {
-    return this.getValidatedJSON(MetaStore.KEY_SCHEMA_JSON, SchemaJSONCompiled);
+    const row = this.getRow(MetaStore.KEY_SCHEMA_JSON);
+    if (row == null) return null;
+    return this.getValidatedJSON(MetaStore.KEY_SCHEMA_JSON, SchemaJSONCompiled, row.value);
   }
 
   setSchemaJSON(value: SchemaJSON): void {
-    this.setValidatedJSON(MetaStore.KEY_SCHEMA_JSON, SchemaJSONCompiled, value);
+    this.validateAndSetJSON(MetaStore.KEY_SCHEMA_JSON, SchemaJSONCompiled, value);
   }
 
   getTables(): TablesList | null {
-    return this.getValidatedJSON(MetaStore.KEY_TABLES, TablesCompiled);
+    const row = this.getRow(MetaStore.KEY_TABLES);
+    if (row == null) return null;
+    return this.getValidatedJSON(MetaStore.KEY_TABLES, TablesCompiled, row.value);
   }
 
   setTables(value: TablesList): void {
-    this.setValidatedJSON(MetaStore.KEY_TABLES, TablesCompiled, value);
+    this.validateAndSetJSON(MetaStore.KEY_TABLES, TablesCompiled, value);
   }
 
   getRelations(): RelationsList | null {
-    return this.getValidatedJSON(MetaStore.KEY_RELATIONS, RelationsCompiled);
+    const row = this.getRow(MetaStore.KEY_RELATIONS);
+    if (row == null) return null;
+    return this.getValidatedJSON(MetaStore.KEY_RELATIONS, RelationsCompiled, row.value);
   }
 
   setRelations(value: RelationsList): void {
-    this.setValidatedJSON(MetaStore.KEY_RELATIONS, RelationsCompiled, value);
+    this.validateAndSetJSON(MetaStore.KEY_RELATIONS, RelationsCompiled, value);
   }
 
   getVersion(): Version | null {
-    return this.getString(MetaStore.KEY_VERSION);
+    const row = this.getRow(MetaStore.KEY_VERSION);
+    if (row == null) return null;
+    return row.value as Version;
   }
 
   setVersion(value: Version): void {
-    this.setString(MetaStore.KEY_VERSION, value);
+    this.setRow(MetaStore.KEY_VERSION, value as string, ENCODING_PLAIN);
   }
 }

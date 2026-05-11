@@ -6,7 +6,8 @@
 import type { TObject, TSchema } from "typebox";
 import type { AggregateOptions } from "./types.ts";
 import type { TableMeta } from "./schema.ts";
-import { buildWhere, buildFilter } from "./query-builder.ts";
+import type { SQLQueryBindings } from "./database.ts";
+import { buildWhere, buildFilter, type FilterShape } from "./query-builder.ts";
 
 function escapeSqlString(value: string): string {
   return value.replace(/'/g, "''");
@@ -36,7 +37,7 @@ export function buildAggregateSql<T extends TSchema & { properties: Record<strin
   opts: AggregateOptions<T>,
   softDeleteColumn?: string,
   meta?: TableMeta
-): { sql: string; params: unknown[] } {
+): { sql: string; params: SQLQueryBindings[] } {
   const { sql: whereSql, params: whereParams } = buildWhere(
     opts.where,
     opts.includeDeleted ? undefined : softDeleteColumn,
@@ -64,11 +65,11 @@ export function buildAggregateSql<T extends TSchema & { properties: Record<strin
   const groupBySql = opts.groupBy ? `GROUP BY ${opts.groupBy.map(c => resolveAggColumn(c, meta)).join(", ")}` : "";
 
   const havingParts: string[] = [];
-  const havingParams: unknown[] = [];
+  const havingParams: SQLQueryBindings[] = [];
   if (opts.having) {
     for (const [alias, filter] of Object.entries(opts.having)) {
       if (filter && typeof filter === "object" && !Array.isArray(filter)) {
-        const entry = buildFilter(alias, filter as any);
+        const entry = buildFilter(alias, filter as FilterShape, meta);
         havingParts.push(entry.sql);
         havingParams.push(...entry.params);
       }

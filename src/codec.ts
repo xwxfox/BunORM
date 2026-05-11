@@ -4,22 +4,23 @@ export interface ColumnCodec {
 }
 
 export const GzipCodec: ColumnCodec = {
-  encode(value) {
+  encode(value: unknown): unknown {
     if (typeof value !== "string") return value;
-    return Bun.gzipSync(new TextEncoder().encode(value));
+    const bytes = new TextEncoder().encode(value);
+    return Bun.gzipSync(bytes.buffer as ArrayBuffer);
   },
-  decode(value) {
+  decode(value: unknown): unknown {
     if (!(value instanceof Uint8Array)) return value;
-    return new TextDecoder().decode(Bun.gunzipSync(new Uint8Array(value)));
+    return new TextDecoder().decode(Bun.gunzipSync(value.buffer as ArrayBuffer));
   },
 };
 
 export const JsonCodec: ColumnCodec = {
-  encode(value) {
+  encode(value: unknown): unknown {
     if (value === undefined || value === null) return null;
     return JSON.stringify(value);
   },
-  decode(value) {
+  decode(value: unknown): unknown {
     if (typeof value !== "string") return value;
     try { return JSON.parse(value); } catch { return value; }
   },

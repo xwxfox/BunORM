@@ -48,7 +48,7 @@ export class BatchWriter<TInput, TRow extends Record<string, unknown>> {
     this.db.transaction(() => {
       const batches = buildInsertMany(this.tableName, rows);
       for (const { sql, params } of batches) {
-        this.db.prepare(sql).run(...(params as SQLQueryBindings[]));
+        this.db.prepare(sql).run(...params);
       }
     });
     this.onFlush?.(rows);

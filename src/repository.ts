@@ -208,7 +208,7 @@ export class Repository<
       );
       return this._executor.all<Record<string, unknown>>(
         sql,
-        params as SQLQueryBindings[],
+        params,
         operation
       );
     }
@@ -227,7 +227,7 @@ export class Repository<
     );
     const pkRows = this._executor.all<Record<string, unknown>>(
       pkSql,
-      pkParams as SQLQueryBindings[],
+      pkParams,
       operation
     );
     const pkValues = pkRows
@@ -246,7 +246,7 @@ export class Repository<
       );
       return this._executor.all<Record<string, unknown>>(
         sql,
-        params as SQLQueryBindings[],
+        params,
         operation
       );
     }
@@ -256,7 +256,7 @@ export class Repository<
     const fullSql = `SELECT * FROM "${this.tableName}" WHERE "${pk}" IN (${ph})`;
     const rows = this._executor.all<Record<string, unknown>>(
       fullSql,
-      pkValues as SQLQueryBindings[],
+      pkValues,
       operation
     );
 
@@ -474,7 +474,7 @@ export class Repository<
         // Main row
         const flat = flattenRow(obj, this.meta, this._codecs);
         const { sql, params } = buildInsert(this.tableName, flat);
-        this._executor.exec(sql, params as SQLQueryBindings[], "insert");
+        this._executor.exec(sql, params, "insert");
 
         const pkVal = obj[this.descriptor.primaryKey.name];
 
@@ -485,7 +485,7 @@ export class Repository<
           const rows = flattenSubRows(this._assertPk(pkVal), items, sub, this._codecs);
           for (const row of rows) {
             const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
-            this._executor.exec(iSql, iParams as SQLQueryBindings[], "insert");
+            this._executor.exec(iSql, iParams, "insert");
           }
         }
       });
@@ -526,7 +526,7 @@ export class Repository<
       this.db.transaction(() => {
         const batches = buildInsertMany(this.tableName, flatRows);
         for (const { sql, params } of batches) {
-          this._executor.exec(sql, params as SQLQueryBindings[], "insertMany");
+          this._executor.exec(sql, params, "insertMany");
         }
         // Sub-tables still insert individually per parent
         for (const obj of objs) {
@@ -537,7 +537,7 @@ export class Repository<
             const rows = flattenSubRows(this._assertPk(pkVal), items, sub, this._codecs);
             for (const row of rows) {
               const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
-              this._executor.exec(iSql, iParams as SQLQueryBindings[], "insertMany");
+              this._executor.exec(iSql, iParams, "insertMany");
             }
           }
         }
@@ -632,7 +632,7 @@ export class Repository<
           conflictCols,
           updateCols
         );
-        this._executor.exec(sql, params as SQLQueryBindings[], "upsert");
+        this._executor.exec(sql, params, "upsert");
 
         const pkVal = obj[this.descriptor.primaryKey.name];
 
@@ -649,7 +649,7 @@ export class Repository<
           const rows = flattenSubRows(this._assertPk(pkVal), items, sub, this._codecs);
           for (const row of rows) {
             const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
-            this._executor.exec(iSql, iParams as SQLQueryBindings[], "insert");
+            this._executor.exec(iSql, iParams, "insert");
           }
         }
       });
@@ -714,7 +714,7 @@ export class Repository<
       this.db.transaction(() => {
         const batches = buildUpsertMany(this.tableName, flatRows, conflictCols, updateCols);
         for (const { sql, params } of batches) {
-          const result = this._executor.exec(sql, params as SQLQueryBindings[], "upsertMany");
+          const result = this._executor.exec(sql, params, "upsertMany");
           totalChanges += result.changes;
         }
 
@@ -731,8 +731,8 @@ export class Repository<
             if (!globalThis.Array.isArray(items) || items.length === 0) continue;
             const rows = flattenSubRows(this._assertPk(pkVal), items, sub, this._codecs);
             for (const row of rows) {
-              const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
-              this._executor.exec(iSql, iParams as SQLQueryBindings[], "insert");
+const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
+            this._executor.exec(iSql, iParams, "insert");
             }
           }
         }
@@ -844,7 +844,7 @@ export class Repository<
             try {
               this._executor.exec(
                 `UPDATE "${this.tableName}" SET "${lruCol}" = ? WHERE "${pk}" IN (${ph})`,
-                [now, ...touchPks] as SQLQueryBindings[]
+                [now, ...touchPks] as [number, ...SQLQueryBindings[]]
               );
             } catch { /* ignore */ }
           });
@@ -863,7 +863,7 @@ export class Repository<
         const ph = pkValues.map(() => "?").join(", ");
         const subRows = this._executor.all<Record<string, unknown>>(
           `SELECT * FROM "${sub.tableName}" WHERE "_owner_id" IN (${ph}) ORDER BY "_index" ASC`,
-          pkValues as SQLQueryBindings[],
+          pkValues,
           "findMany"
         );
         const byOwner = new Map<string | number, Record<string, unknown>[]>();
@@ -928,7 +928,7 @@ export class Repository<
 
       const countRow = this._executor.get<{ _count: number }>(
         countSql,
-        countParams as SQLQueryBindings[],
+        countParams,
         "count"
       );
 
@@ -982,7 +982,7 @@ export class Repository<
       );
 
       let sql = `SELECT * FROM "${this.tableName}"`;
-      const params: unknown[] = [...whereParams];
+      const params: SQLQueryBindings[] = [...whereParams];
 
       if (opts.cursor) {
         const cursorCol = resolveOrderByColumn(opts.cursor.column, this.meta);
@@ -1009,7 +1009,7 @@ export class Repository<
 
       const rows = this._executor.all<Record<string, unknown>>(
         sql,
-        params as SQLQueryBindings[],
+        params,
         "findCursorPage"
       );
 
@@ -1081,7 +1081,7 @@ export class Repository<
     try {
       const resolvedOpts = opts.select && opts.include ? this._ensureSelectPk(opts) : opts.select ? this._ensureSelectPk(opts) : opts;
       const { sql, params } = buildSelectSql(this.tableName, resolvedOpts, this.descriptor.softDelete?.column, this.meta);
-      const gen = this._executor.iterate<Record<string, unknown>>(sql, params as SQLQueryBindings[], "iterate");
+      const gen = this._executor.iterate<Record<string, unknown>>(sql, params, "iterate");
 
       if (!opts.include || opts.include.length === 0) {
         for (const row of gen) {
@@ -1126,7 +1126,7 @@ export class Repository<
       const ph = pkValues.map(() => "?").join(", ");
       const subRows = this._executor.all<Record<string, unknown>>(
         `SELECT * FROM "${sub.tableName}" WHERE "_owner_id" IN (${ph}) ORDER BY "_index" ASC`,
-        pkValues as SQLQueryBindings[],
+        pkValues,
         "iterate"
       );
       const byOwner = new Map<string | number, Record<string, unknown>[]>();
@@ -1203,7 +1203,7 @@ export class Repository<
       const fullSql = `SELECT COUNT(*) as "_count" FROM "${this.tableName}" ${sql}`.trim();
       const row = this._executor.get<{ _count: number }>(
         fullSql,
-        params as SQLQueryBindings[],
+        params,
         "count"
       );
       const result = (row ?? { _count: 0 })._count;
@@ -1238,7 +1238,7 @@ export class Repository<
   ): AggregateResult<T, A, G> {
     return withTrace("repository.aggregate", { table: this.tableName }, () => {
       const { sql, params } = buildAggregateSql(this.tableName, opts, this.descriptor.softDelete?.column, this.meta);
-      const rows = this._executor.all<AggregateResult<T, A, G>[number]>(sql, params as SQLQueryBindings[], "aggregate");
+      const rows = this._executor.all<AggregateResult<T, A, G>[number]>(sql, params, "aggregate");
       this._emit("aggregate", { options: opts, result: rows });
       return rows;
     });
@@ -1269,7 +1269,7 @@ export class Repository<
   ): WindowResult<T, W> {
     return withTrace("repository.windowQuery", { table: this.tableName }, () => {
       const { sql, params } = buildWindowSql(this.tableName, opts, this.descriptor.softDelete?.column, this.meta);
-      const rows = this._executor.all<WindowResult<T, W>[number]>(sql, params as SQLQueryBindings[], "windowQuery");
+      const rows = this._executor.all<WindowResult<T, W>[number]>(sql, params, "windowQuery");
       this._emit("windowQuery", { options: opts, result: rows });
       return rows;
     });
@@ -1316,7 +1316,7 @@ export class Repository<
 
       this.db.transaction(() => {
         const { sql, params } = buildUpdate(this.tableName, pk, this._assertPk(rawPk), patch);
-        this._executor.exec(sql, params as SQLQueryBindings[], "update");
+        this._executor.exec(sql, params, "update");
 
         // Re-sync sub-tables
         for (const sub of this.meta.subTables) {
@@ -1331,7 +1331,7 @@ export class Repository<
           const rows = flattenSubRows(this._assertPk(rawPk), items, sub, this._codecs);
           for (const row of rows) {
             const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
-            this._executor.exec(iSql, iParams as SQLQueryBindings[], "insert");
+            this._executor.exec(iSql, iParams, "insert");
           }
         }
       });
@@ -1372,7 +1372,7 @@ export class Repository<
         softDeleteCol,
         this.meta
       );
-      const result = this._executor.exec(sql, params as SQLQueryBindings[], "updateWhere");
+      const result = this._executor.exec(sql, params, "updateWhere");
       this._emit("updateWhere", { where: opts.where, result: result.changes });
       return result.changes;
     });
@@ -1443,7 +1443,7 @@ export class Repository<
         const col = this.descriptor.softDelete.column;
         const { sql: whereSql, params } = buildWhere(where, col, this.meta);
         const fullSql = `UPDATE "${this.tableName}" SET "${col}" = ? ${whereSql}`.trim();
-        const changes = this._executor.exec(fullSql, [Date.now(), ...params] as SQLQueryBindings[], "deleteWhere").changes;
+        const changes = this._executor.exec(fullSql, [Date.now(), ...params] as [number, ...SQLQueryBindings[]], "deleteWhere").changes;
         this._emit("deleteWhere", { where, result: changes });
         return changes;
       }
@@ -1454,11 +1454,11 @@ export class Repository<
         // Cascade to sub-tables first
         for (const sub of this.meta.subTables) {
           const delSubSql = `DELETE FROM "${sub.tableName}" WHERE "_owner_id" IN (SELECT "${pk}" FROM "${this.tableName}" ${whereSql})`.trim();
-          this._executor.exec(delSubSql, params as SQLQueryBindings[], "delete");
+          this._executor.exec(delSubSql, params, "delete");
         }
 
         const delSql = `DELETE FROM "${this.tableName}" ${whereSql}`.trim();
-        const result = this._executor.exec(delSql, params as SQLQueryBindings[], "delete");
+        const result = this._executor.exec(delSql, params, "delete");
         return result.changes;
       });
 

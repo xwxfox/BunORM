@@ -71,13 +71,39 @@ export interface TableMeta {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function unwrapOptional(schema: TSchema): { schema: TSchema; optional: boolean } {
-  // In typebox 1.x optional is a brand on the schema itself
   if (IsOptional(schema)) {
-    // Optional wraps the inner schema - we treat the inner schema for type mapping
-    // The '~optional' brand is on the schema, not a wrapper object
     return { schema, optional: true };
   }
   return { schema, optional: false };
+}
+
+function schemaAnyOfMembers(schema: TSchema): TSchema[] | null {
+  const obj = schema as Record<string, unknown>;
+  if (obj.anyOf && Array.isArray(obj.anyOf)) {
+    return (obj.anyOf as TSchema[]);
+  }
+  return null;
+}
+
+function schemaConstValue(schema: TSchema): unknown {
+  const obj = schema as Record<string, unknown>;
+  return obj.const;
+}
+
+function schemaProperties(schema: TSchema): Record<string, TSchema> | null {
+  const obj = schema as Record<string, unknown>;
+  if (obj.properties && typeof obj.properties === "object" && obj.properties !== null) {
+    return obj.properties as Record<string, TSchema>;
+  }
+  return null;
+}
+
+function schemaItems(schema: TSchema): TSchema | null {
+  const obj = schema as Record<string, unknown>;
+  if (obj.items && typeof obj.items === "object" && obj.items !== null) {
+    return obj.items as TSchema;
+  }
+  return null;
 }
 
 /**
@@ -85,11 +111,12 @@ function unwrapOptional(schema: TSchema): { schema: TSchema; optional: boolean }
  * nullable without being wrapped in `Type.Optional()`.
  */
 function isNullableUnion(schema: TSchema): boolean {
-  const s = schema as Record<string, unknown>;
-  if (s.anyOf && Array.isArray(s.anyOf)) {
-    return (s.anyOf as Array<Record<string, unknown>>).some(
-      (item) => item.type === "null"
-    );
+  const members = schemaAnyOfMembers(schema);
+  if (members) {
+    return members.some((item) => {
+      const obj = item as Record<string, unknown>;
+      return obj.type === "null";
+    });
   }
   return false;
 }
@@ -97,21 +124,24 @@ function isNullableUnion(schema: TSchema): boolean {
 function schemaToSqlType(schema: TSchema): SqliteType {
   if (IsInteger(schema)) return "INTEGER";
   if (IsNumber(schema)) return "REAL";
-  if (IsBoolean(schema)) return "INTEGER"; // SQLite has no bool; 0/1
+  if (IsBoolean(schema)) return "INTEGER";
   if (IsString(schema)) return "TEXT";
   if (IsLiteral(schema)) {
-    const v: unknown = schema.const;
+    const v = schemaConstValue(schema);
     if (typeof v === "number") return Number.isInteger(v) ? "INTEGER" : "REAL";
     if (typeof v === "boolean") return "INTEGER";
     return "TEXT";
   }
   if (isNullableUnion(schema)) {
-    const s = schema as Record<string, unknown>;
-    const members = s.anyOf as Array<Record<string, unknown>>;
-    const nonNull = members.find((m) => m.type !== "null");
-    if (nonNull) return schemaToSqlType(nonNull as TSchema);
+    const members = schemaAnyOfMembers(schema);
+    if (members) {
+      const nonNull = members.find((m) => {
+        const obj = m as Record<string, unknown>;
+        return obj.type !== "null";
+      });
+      if (nonNull) return schemaToSqlType(nonNull);
+    }
   }
-  // Fallback - JSON-encode anything complex that slips through
   return "TEXT";
 }
 
@@ -119,20 +149,22 @@ function isScalarLike(schema: TSchema): boolean {
   if (IsString(schema) || IsNumber(schema) || IsInteger(schema) || IsBoolean(schema) || IsLiteral(schema))
     return true;
   if (isNullableUnion(schema)) {
-    const s = schema as Record<string, unknown>;
-    const members = s.anyOf as Array<Record<string, unknown>>;
-    const nonNull = members.find((m) => m.type !== "null");
-    if (!nonNull) return false;
-    return isScalarLike(nonNull as TSchema);
+    const members = schemaAnyOfMembers(schema);
+    if (members) {
+      const nonNull = members.find((m) => {
+        const obj = m as Record<string, unknown>;
+        return obj.type !== "null";
+      });
+      if (!nonNull) return false;
+      return isScalarLike(nonNull);
+    }
   }
   return false;
 }
 
 function shouldFlattenObject(schema: TSchema): boolean {
   if (!IsObject(schema)) return false;
-  const props = (schema as unknown as Record<string, unknown>).properties as
-    | TProperties
-    | undefined;
+  const props = schemaProperties(schema);
   if (!props) return false;
   for (const raw of Object.values(props)) {
     if (IsArray(raw) || IsObject(raw)) continue;
@@ -315,6 +347,32 @@ function encodeValue(v: unknown, sqlType: SqliteType): unknown {
   return toSqliteScalar(v);
 }
 
+function encodeValueWithCodec(v: unknown, sqlType: SqliteType, codec: ColumnCodec | undefined): unknown {
+  const encoded = encodeValue(v, sqlType);
+  if (!codec) return encoded;
+  return codec.encode(encoded);
+}
+
+function getValueAtPath(obj: unknown, path: string[]): unknown {
+  let current: unknown = obj;
+  for (const key of path) {
+    if (current === null || current === undefined) return undefined;
+    if (typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function setValueAtPath(obj: Record<string, unknown>, path: string[], value: unknown): void {
+  let current: Record<string, unknown> = obj;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i]!;
+    if (!(key in current)) current[key] = {};
+    current = current[key] as Record<string, unknown>;
+  }
+  current[path[path.length - 1]!] = value;
+}
+
 export function flattenRow(
   obj: Record<string, unknown>,
   meta: TableMeta,
@@ -324,33 +382,13 @@ export function flattenRow(
   if (!codecs?.size) {
     for (const col of meta.columns) {
       if (col.generated) continue;
-      let v: unknown;
-      const path = col.path;
-      if (path) {
-        v = obj;
-        for (let i = 0; i < path.length; i++) {
-          v = (v as Record<string, unknown>)?.[path[i]!];
-          if (v === undefined || v === null) break;
-        }
-      } else {
-        v = obj[col.name];
-      }
+      const v = col.path ? getValueAtPath(obj, col.path) : obj[col.name];
       row[col.name] = encodeValue(v, col.sqlType);
     }
   } else {
     for (const col of meta.columns) {
       if (col.generated) continue;
-      let v: unknown;
-      const path = col.path;
-      if (path) {
-        v = obj;
-        for (let i = 0; i < path.length; i++) {
-          v = (v as Record<string, unknown>)?.[path[i]!];
-          if (v === undefined || v === null) break;
-        }
-      } else {
-        v = obj[col.name];
-      }
+      const v = col.path ? getValueAtPath(obj, col.path) : obj[col.name];
       let encoded = encodeValue(v, col.sqlType);
       const codec = codecs.get(col.name);
       if (codec) encoded = codec.encode(encoded);
@@ -372,31 +410,18 @@ export function flattenPatch(
   const row: Record<string, unknown> = {};
   for (const col of meta.columns) {
     if (col.generated) continue;
+    if (!(col.name in obj) && !col.path) continue;
     let v: unknown;
-    const path = col.path;
-    if (path) {
-      v = obj;
-      for (let i = 0; i < path.length; i++) {
-        const key = path[i]!;
-        if (typeof v !== "object" || v === null || !(key in v)) {
-          v = undefined;
-          break;
-        }
-        v = (v as Record<string, unknown>)[key];
-      }
+    if (col.path) {
+      v = getValueAtPath(obj, col.path);
     } else {
-      if (col.name in obj) {
-        v = obj[col.name];
-      } else {
-        continue;
-      }
+      v = obj[col.name];
     }
-    if (v !== undefined) {
-      let encoded = encodeValue(v, col.sqlType);
-      const codec = codecs?.get(col.name);
-      if (codec) encoded = codec.encode(encoded);
-      row[col.name] = encoded;
-    }
+    if (v === undefined) continue;
+    let encoded = encodeValue(v, col.sqlType);
+    const codec = codecs?.get(col.name);
+    if (codec) encoded = codec.encode(encoded);
+    row[col.name] = encoded;
   }
   return row;
 }
@@ -423,17 +448,7 @@ export function flattenSubRows(
         _index: idx,
       };
       for (const col of sub.columns) {
-        let v: unknown;
-        const path = col.path;
-        if (path) {
-          v = obj;
-          for (let i = 0; i < path.length; i++) {
-            v = (v as Record<string, unknown>)?.[path[i]!];
-            if (v === undefined || v === null) break;
-          }
-        } else {
-          v = obj[col.name];
-        }
+        const v = col.path ? getValueAtPath(obj, col.path) : obj[col.name];
         row[col.name] = encodeValue(v, col.sqlType);
       }
       result[idx] = row;
@@ -450,17 +465,7 @@ export function flattenSubRows(
         _index: idx,
       };
       for (const col of sub.columns) {
-        let v: unknown;
-        const path = col.path;
-        if (path) {
-          v = obj;
-          for (let i = 0; i < path.length; i++) {
-            v = (v as Record<string, unknown>)?.[path[i]!];
-            if (v === undefined || v === null) break;
-          }
-        } else {
-          v = obj[col.name];
-        }
+        const v = col.path ? getValueAtPath(obj, col.path) : obj[col.name];
         let encoded = encodeValue(v, col.sqlType);
         const codec = codecs.get(col.name);
         if (codec) encoded = codec.encode(encoded);
@@ -517,18 +522,11 @@ function hydrateRowFast(
   const obj: Record<string, unknown> = {};
   for (const col of meta.columns) {
     const v = decodeValue(flat[col.name], col.sqlType, col.isBoolean);
-    const path = col.path;
-    if (path) {
-      if (path.length === 1) {
-        obj[path[0]!] = v;
+    if (col.path) {
+      if (col.path.length === 1) {
+        obj[col.path[0]!] = v;
       } else {
-        let target = obj;
-        for (let i = 0; i < path.length - 1; i++) {
-          const segment = path[i]!;
-          if (!(segment in target)) target[segment] = {};
-          target = target[segment] as Record<string, unknown>;
-        }
-        target[path[path.length - 1]!] = v;
+        setValueAtPath(obj, col.path, v);
       }
     } else {
       obj[col.name] = v;
@@ -557,18 +555,11 @@ export function hydrateRow(
     if (!codecs?.size) {
       for (const col of meta.columns) {
         const v = decodeValue(flat[col.name], col.sqlType, col.isBoolean);
-        const path = col.path;
-        if (path) {
-          if (path.length === 1) {
-            obj[path[0]!] = v;
+        if (col.path) {
+          if (col.path.length === 1) {
+            obj[col.path[0]!] = v;
           } else {
-            let target = obj;
-            for (let i = 0; i < path.length - 1; i++) {
-              const segment = path[i]!;
-              if (!(segment in target)) target[segment] = {};
-              target = target[segment] as Record<string, unknown>;
-            }
-            target[path[path.length - 1]!] = v;
+            setValueAtPath(obj, col.path, v);
           }
         } else {
           obj[col.name] = v;
@@ -580,18 +571,11 @@ export function hydrateRow(
         const codec = codecs.get(col.name);
         if (codec) v = codec.decode(v);
         const decoded = decodeValue(v, col.sqlType, col.isBoolean);
-        const path = col.path;
-        if (path) {
-          if (path.length === 1) {
-            obj[path[0]!] = decoded;
+        if (col.path) {
+          if (col.path.length === 1) {
+            obj[col.path[0]!] = decoded;
           } else {
-            let target = obj;
-            for (let i = 0; i < path.length - 1; i++) {
-              const segment = path[i]!;
-              if (!(segment in target)) target[segment] = {};
-              target = target[segment] as Record<string, unknown>;
-            }
-            target[path[path.length - 1]!] = decoded;
+            setValueAtPath(obj, col.path, decoded);
           }
         } else {
           obj[col.name] = decoded;
@@ -604,12 +588,10 @@ export function hydrateRow(
     for (const s of select) {
       selectedSet.add(s);
       if (!s.includes(".")) {
-        // Top-level key: also select all dotted children
         for (const col of meta.columns) {
           if (col.path && col.path[0] === s) selectedSet.add(col.name);
         }
       } else {
-        // Dotted path: also select the exact column name
         const col = meta.columnByPath.get(s);
         if (col) selectedSet.add(col.name);
       }
@@ -621,18 +603,11 @@ export function hydrateRow(
       const codec = codecs?.get(col.name);
       if (codec) v = codec.decode(v);
       const decoded = decodeValue(v, col.sqlType, col.isBoolean);
-      const path = col.path;
-      if (path) {
-        if (path.length === 1) {
-          obj[path[0]!] = decoded;
+      if (col.path) {
+        if (col.path.length === 1) {
+          obj[col.path[0]!] = decoded;
         } else {
-          let target = obj;
-          for (let i = 0; i < path.length - 1; i++) {
-            const segment = path[i]!;
-            if (!(segment in target)) target[segment] = {};
-            target = target[segment] as Record<string, unknown>;
-          }
-          target[path[path.length - 1]!] = decoded;
+          setValueAtPath(obj, col.path, decoded);
         }
       } else {
         obj[col.name] = decoded;
@@ -654,13 +629,7 @@ export function hydrateRow(
             } catch { /* leave as string */ }
           }
         }
-        let target = obj;
-        for (let i = 0; i < parts.length - 1; i++) {
-          const segment = parts[i]!;
-          if (!(segment in target)) target[segment] = {};
-          target = target[segment] as Record<string, unknown>;
-        }
-        target[parts[parts.length - 1]!] = decoded;
+        setValueAtPath(obj, parts, decoded);
       }
     }
   }

@@ -6,6 +6,7 @@
 import type { TSchema } from "typebox";
 import type { WindowQueryOptions, WindowFunction } from "./types.ts";
 import type { TableMeta } from "./schema.ts";
+import type { SQLQueryBindings } from "./database.ts";
 import { buildWhere, resolveOrderByColumn } from "./query-builder.ts";
 
 function buildWindowSqlExpression<T extends TSchema & { properties: Record<string, TSchema> }>(
@@ -35,7 +36,7 @@ export function buildWindowSql<T extends TSchema & { properties: Record<string, 
   opts: WindowQueryOptions<T>,
   softDeleteColumn?: string,
   meta?: TableMeta
-): { sql: string; params: unknown[] } {
+): { sql: string; params: SQLQueryBindings[] } {
   const { sql: whereSql, params: whereParams } = buildWhere(
     opts.where,
     softDeleteColumn,

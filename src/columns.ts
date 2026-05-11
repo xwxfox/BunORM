@@ -125,9 +125,13 @@ function isScalarSchema(prop: TSchema): prop is TScalarSchema {
 
 function unwrapOptionalRuntime(schema: TSchema): TSchema {
   if (IsOptional(schema)) {
-    const copy = { ...(schema as any) };
-    delete copy["~optional"];
-    return copy as TSchema;
+    const obj = schema as unknown as Record<string, unknown>;
+    const result: Record<string, unknown> = {};
+    for (const k of Object.keys(obj)) {
+      if (k === "~optional") continue;
+      result[k] = obj[k];
+    }
+    return result as unknown as TSchema;
   }
   return schema;
 }
@@ -144,7 +148,8 @@ export function createColumnProxy<T extends TSchema & { properties: Record<strin
     if (prop) {
       const objProp = unwrapOptionalRuntime(prop);
       if (objProp && IsObject(objProp)) {
-        const props = (objProp as any).properties as Record<string, TSchema>;
+        const objSchema = objProp as unknown as TObject<Record<string, TSchema>>;
+        const props = objSchema.properties;
         for (const nestedKey of Object.keys(props)) {
           const nestedProp = props[nestedKey];
           if (nestedProp) {
@@ -156,7 +161,8 @@ export function createColumnProxy<T extends TSchema & { properties: Record<strin
 
             const nestedObjProp = unwrapOptionalRuntime(nestedProp);
             if (nestedObjProp && IsObject(nestedObjProp)) {
-              const nestedProps = (nestedObjProp as any).properties as Record<string, TSchema>;
+              const nestedSchema = nestedObjProp as unknown as TObject<Record<string, TSchema>>;
+              const nestedProps = nestedSchema.properties;
               for (const deepKey of Object.keys(nestedProps)) {
                 const deepProp = nestedProps[deepKey];
                 if (deepProp) {

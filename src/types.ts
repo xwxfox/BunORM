@@ -357,7 +357,7 @@ export interface PaginationOptions {
 
 export interface Cursor {
   column: string;
-  value: unknown;
+  value: SqliteScalar;
 }
 
 export interface CursorInput extends Cursor {
