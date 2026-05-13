@@ -4,7 +4,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { Object, String, Number } from "typebox";
+import { Object, String, Number, Type } from "typebox";
 import { createORM, table } from "../src/index.ts";
 
 const OrderSchema = Object({
@@ -19,9 +19,10 @@ function makeORM() {
     tables: {
       orders: table(OrderSchema, (s) => ({
         primaryKey: s.id,
-        generated: [
-          { name: "doubleAmount", expr: "amount * 2", sqlType: "REAL" },
-        ],
+        timestamps: false,
+        generated: {
+          doubleAmount: { expr: "amount * 2", type: Type.Number() },
+        },
         indexes: [{ columns: [{ name: "doubleAmount" }] }],
       })),
     },
@@ -52,6 +53,7 @@ describe("generated columns", () => {
     const rows = orm.orders.findMany({
       where: { doubleAmount: { gte: 300 } },
     });
+
     expect(rows).toHaveLength(1);
     expect(rows[0]!.id).toBe("o2");
   });

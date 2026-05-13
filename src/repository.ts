@@ -37,6 +37,7 @@ import type {
   QueryMetrics,
   SelectableKeys,
   SelectShape,
+  GeneratedColumnConfig,
 } from "./types.ts";
 import type { BunDatabase, SQLQueryBindings } from "./database.ts";
 import { QueryExecutor } from "./query-executor.ts";
@@ -50,6 +51,7 @@ import {
   flattenPatch,
   flattenSubRows,
   hydrateRow,
+  convertGeneratedConfig,
   type TableMeta,
   type SqliteScalar,
 } from "./schema.ts";
@@ -98,8 +100,9 @@ import type { TimestampConfig } from "./timestamps.ts";
  * ```
  */
 export class Repository<
-  T extends TSchema & { properties: Record<string, TSchema> },
-  PK extends ScalarKeys<T>,
+  TWrite extends TSchema & { properties: Record<string, TSchema> },
+  TQuery extends TSchema & { properties: Record<string, TSchema> },
+  PK extends ScalarKeys<TWrite>,
   Mat = never,
   TS = {}
 > {
@@ -107,9 +110,14 @@ export class Repository<
   /** table metadata - columns, sub-tables, indexes */
   readonly meta: TableMeta;
 
-  private readonly validator: ReturnType<typeof Compile<T>>;
+  private readonly validator: ReturnType<typeof Compile<TWrite>>;
   private readonly db: BunDatabase;
-  private readonly descriptor: TableConfig<T, PK>;
+  private readonly descriptor: TableConfig<
+    TWrite,
+    PK & string,
+    import("./types.ts").TimestampConfig,
+    GeneratedColumnConfig | undefined
+  >;
   private _entityProto: object | null = null;
   private readonly _timestampNames: { createdAt: string | null; updatedAt: string | null };
   private _materialize?: (
@@ -134,14 +142,23 @@ export class Repository<
 
   constructor(
     tableName: string,
-    config: TableConfig<T, PK>,
+    config: TableConfig<
+      TWrite,
+      PK & string,
+      import("./types.ts").TimestampConfig,
+      GeneratedColumnConfig | undefined
+    >,
     db: BunDatabase
   ) {
     this.tableName = tableName;
     this.descriptor = config;
     this.db = db;
     this._executor = new QueryExecutor({ db, tableName: this.tableName });
-    this.meta = introspectTable(tableName, config.schema, config.generated);
+    this.meta = introspectTable(
+      tableName,
+      config.schema,
+      convertGeneratedConfig(config.generated),
+    );
     this._timestampNames = resolveTimestampNames(config.timestamps, this.meta);
     this.validator = Compile(config.schema);
 
@@ -171,7 +188,7 @@ export class Repository<
   }
 
   /** Ensure PK is selected when include is requested */
-  private _ensureSelectPk(opts: FindOptions<T>): FindOptions<T> {
+  private _ensureSelectPk(opts: FindOptions<TQuery>): FindOptions<TQuery> {
     const pk = this.descriptor.primaryKey.name;
     if (opts.select && opts.include && !opts.select.includes(pk)) {
       return { ...opts, select: [...opts.select, pk] };
@@ -184,7 +201,7 @@ export class Repository<
    * Avoids reading all columns for rows that don't match the WHERE clause.
    */
   private _fetchRows(
-    opts: FindOptions<T>,
+    opts: FindOptions<TQuery>,
     operation: string
   ): Record<string, unknown>[] {
     const pk = this.descriptor.primaryKey.name;
@@ -214,7 +231,7 @@ export class Repository<
     }
 
     // Phase 1: fetch only PKs (covers index-only scans)
-    const pkOpts: FindOptions<T> = {
+    const pkOpts: FindOptions<TQuery> = {
       ...opts,
       select: [pk] as any,
       include: undefined,
@@ -295,15 +312,15 @@ export class Repository<
   }
 
   /** Wrap raw data in an entity object */
-  private _wrap(data: Record<string, unknown>): Entity<Infer<T>, Mat, TS> {
-    if (!this._entityProto) return data as Entity<Infer<T>, Mat, TS>;
+  private _wrap(data: Record<string, unknown>): Entity<Infer<TQuery>, Mat, TS> {
+    if (!this._entityProto) return data as Entity<Infer<TQuery>, Mat, TS>;
     const entity = Object.create(this._entityProto);
     Object.assign(entity, data);
-    return entity as Entity<Infer<T>, Mat, TS>;
+    return entity as Entity<Infer<TQuery>, Mat, TS>;
   }
 
   /** Narrow a parsed schema value to a plain record for dynamic property access */
-  private _record(value: Infer<T>): Record<string, unknown> {
+  private _record(value: Infer<TWrite>): Record<string, unknown> {
     return Object.fromEntries(Object.entries(value));
   }
 
@@ -323,7 +340,7 @@ export class Repository<
     });
   }
 
-  private _emit<Op extends TableOperation, D = Infer<T> | Infer<T>[] | Partial<Infer<T>> | Record<string, unknown>, Result = Infer<T> | Infer<T>[] | PageResult<Infer<T>> | number | null>(
+  private _emit<Op extends TableOperation, D = Infer<TQuery> | Infer<TQuery>[] | Partial<Infer<TQuery>> | Record<string, unknown>, Result = Infer<TQuery> | Infer<TQuery>[] | PageResult<Infer<TQuery>> | number | null>(
     operation: Op,
     payload: {
       data?: D;
@@ -426,7 +443,7 @@ export class Repository<
    * // user is typed as Infer<typeof UserSchema>
    * ```
    */
-  parse(data: unknown): Infer<T> {
+  parse(data: unknown): Infer<TWrite> {
     return this.validator.Parse(data);
   }
 
@@ -442,7 +459,7 @@ export class Repository<
    * }
    * ```
    */
-  check(data: unknown): data is Infer<T> {
+  check(data: unknown): data is Infer<TWrite> {
     return this.validator.Check(data);
   }
 
@@ -462,7 +479,7 @@ export class Repository<
    * });
    * ```
    */
-  insert(data: InsertData<T>): Entity<Infer<T>, Mat, TS> {
+  insert(data: InsertData<TWrite>): Entity<Infer<TQuery>, Mat, TS> {
     return withTrace("repository.insert", { table: this.tableName }, () => {
       const parsed = this.parse(data);
       const obj = this._record(parsed);
@@ -511,7 +528,7 @@ export class Repository<
    * ]);
    * ```
    */
-  insertMany(records: InsertData<T>[]): Entity<Infer<T>, Mat, TS>[] {
+  insertMany(records: InsertData<TWrite>[]): Entity<Infer<TQuery>, Mat, TS>[] {
     return withTrace("repository.insertMany", { table: this.tableName }, () => {
       const parsed = records.map((r) => this.parse(r));
       const objs = parsed.map((p) => {
@@ -563,10 +580,10 @@ export class Repository<
    * writer.close();
    * ```
    */
-  createBatchWriter(opts?: BatchWriterOptions): BatchWriter<InsertData<T>, Record<string, unknown>> {
+  createBatchWriter(opts?: BatchWriterOptions): BatchWriter<InsertData<TWrite>, Record<string, unknown>> {
     const self = this;
     return new BatchWriter(this.tableName, this.db, opts, {
-      prepare(data: InsertData<T>): Record<string, unknown> {
+      prepare(data: InsertData<TWrite>): Record<string, unknown> {
         const parsed = self.parse(data);
         const obj = self._record(parsed);
         const now = Date.now();
@@ -599,7 +616,7 @@ export class Repository<
    * });
    * ```
    */
-  upsert(opts: UpsertOptions<T, PK>): Entity<Infer<T>, Mat, TS> {
+  upsert(opts: UpsertOptions<TWrite, PK>): Entity<Infer<TQuery>, Mat, TS> {
     return withTrace("repository.upsert", { table: this.tableName }, () => {
       const parsed = this.parse(opts.data);
       const obj = this._record(parsed);
@@ -679,7 +696,7 @@ export class Repository<
    * });
    * ```
    */
-  upsertMany(opts: UpsertManyOptions<T, PK>): number {
+  upsertMany(opts: UpsertManyOptions<TWrite, PK>): number {
     return withTrace("repository.upsertMany", { table: this.tableName }, () => {
       const parsed = opts.data.map((r) => this.parse(r));
       const objs = parsed.map((p) => {
@@ -731,8 +748,8 @@ export class Repository<
             if (!globalThis.Array.isArray(items) || items.length === 0) continue;
             const rows = flattenSubRows(this._assertPk(pkVal), items, sub, this._codecs);
             for (const row of rows) {
-const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
-            this._executor.exec(iSql, iParams, "insert");
+              const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
+              this._executor.exec(iSql, iParams, "insert");
             }
           }
         }
@@ -759,7 +776,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * if (user) console.log(user.name);
    * ```
    */
-  findById(id: Infer<T>[PK]): Entity<Infer<T>, Mat, TS> | null {
+  findById(id: Infer<TQuery>[PK]): Entity<Infer<TQuery>, Mat, TS> | null {
     return withTrace("repository.findById", { table: this.tableName }, () => {
       const result = this._findByIdRaw(id);
       this._emit("findById", { id, result });
@@ -768,7 +785,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
   }
 
   /** Internal findById without event emission - used by update() */
-  private _findByIdRaw(id: Infer<T>[PK]): Entity<Infer<T>, Mat, TS> | null {
+  private _findByIdRaw(id: Infer<TQuery>[PK]): Entity<Infer<TQuery>, Mat, TS> | null {
     const pk = this.descriptor.primaryKey.name;
     const sql = this.descriptor.softDelete
       ? `SELECT * FROM "${this.tableName}" WHERE "${pk}" = ? AND "${this.descriptor.softDelete.column}" IS NULL LIMIT 1`
@@ -815,10 +832,10 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * const orders = orm.orders.findMany({ include: ["lineItems"] });
    * ```
    */
-  findMany<const S extends readonly SelectableKeys<T>[], const I extends readonly SubTableKeys<T>[]>(opts: FindOptions<T> & { select: S; include: I }): (SelectShape<T, S> & TS & { [K in I[number]]: SubTableItem<T, K>[] })[];
-  findMany<const S extends readonly SelectableKeys<T>[]>(opts: FindOptions<T> & { select: S }): (SelectShape<T, S> & TS)[];
-  findMany(opts?: FindOptions<T>): Entity<Infer<T>, Mat, TS>[];
-  findMany(opts: FindOptions<T> = {}): (Entity<Infer<T>, Mat, TS> | SelectShape<T, [ScalarKeys<T>]> & TS)[] {
+  findMany<const S extends readonly SelectableKeys<TQuery>[], const I extends readonly SubTableKeys<TQuery>[]>(opts: FindOptions<TQuery> & { select: S; include: I }): (SelectShape<TQuery, S> & TS & { [K in I[number]]: SubTableItem<TQuery, K>[] })[];
+  findMany<const S extends readonly SelectableKeys<TQuery>[]>(opts: FindOptions<TQuery> & { select: S }): (SelectShape<TQuery, S> & TS)[];
+  findMany(opts?: FindOptions<TQuery>): Entity<Infer<TQuery>, Mat, TS>[];
+  findMany(opts: FindOptions<TQuery> = {}): (Entity<Infer<TQuery>, Mat, TS> | SelectShape<TQuery, [ScalarKeys<TQuery>]> & TS)[] {
     return withTrace("repository.findMany", { table: this.tableName }, () => {
       const resolvedOpts = opts.select && opts.include ? this._ensureSelectPk({ ...opts, select: opts.select }) : opts;
       const rows = this._fetchRows(resolvedOpts, "findMany");
@@ -910,10 +927,10 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * // page.limit, page.offset - what you passed in
    * ```
    */
-  findPage<const S extends readonly SelectableKeys<T>[], const I extends readonly SubTableKeys<T>[]>(opts: FindOptions<T> & { select: S; include: I }): PageResult<SelectShape<T, S> & TS & { [K in I[number]]: SubTableItem<T, K>[] }>;
-  findPage<const S extends readonly SelectableKeys<T>[]>(opts: FindOptions<T> & { select: S }): PageResult<SelectShape<T, S> & TS>;
-  findPage(opts?: FindOptions<T>): PageResult<Entity<Infer<T>, Mat, TS>>;
-  findPage(opts: FindOptions<T> = {}): PageResult<Entity<Infer<T>, Mat, TS> | SelectShape<T, [ScalarKeys<T>]> & TS> {
+  findPage<const S extends readonly SelectableKeys<TQuery>[], const I extends readonly SubTableKeys<TQuery>[]>(opts: FindOptions<TQuery> & { select: S; include: I }): PageResult<SelectShape<TQuery, S> & TS & { [K in I[number]]: SubTableItem<TQuery, K>[] }>;
+  findPage<const S extends readonly SelectableKeys<TQuery>[]>(opts: FindOptions<TQuery> & { select: S }): PageResult<SelectShape<TQuery, S> & TS>;
+  findPage(opts?: FindOptions<TQuery>): PageResult<Entity<Infer<TQuery>, Mat, TS>>;
+  findPage(opts: FindOptions<TQuery> = {}): PageResult<Entity<Infer<TQuery>, Mat, TS> | SelectShape<TQuery, [ScalarKeys<TQuery>]> & TS> {
     return withTrace("repository.findPage", { table: this.tableName }, () => {
       const resolvedOpts = opts.select && opts.include ? this._ensureSelectPk(opts) : opts;
       const { countSql, countParams } = buildSelect(
@@ -965,11 +982,11 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * ```
    */
   findCursorPage(opts: {
-    where?: WhereClause<T>;
-    orderBy: OrderByClause<T>;
+    where?: WhereClause<TQuery>;
+    orderBy: OrderByClause<TQuery>;
     cursor?: CursorInput;
     limit?: number;
-  }): CursorPageResult<Entity<Infer<T>, Mat, TS>> {
+  }): CursorPageResult<Entity<Infer<TQuery>, Mat, TS>> {
     return withTrace("repository.findCursorPage", { table: this.tableName }, () => {
       const direction = opts.orderBy.direction ?? "ASC";
       const colRef = resolveOrderByColumn(opts.orderBy.column, this.meta);
@@ -1019,11 +1036,11 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
       }
 
       const nextCursor: Cursor | null = results.length === limit
-        ? { column: opts.orderBy.column, value: (results[results.length - 1] as Record<string, unknown>)[opts.orderBy.column] }
+        ? { column: opts.orderBy.column, value: (results[results.length - 1] as Record<string, unknown>)[opts.orderBy.column] } as Cursor
         : null;
 
       const prevCursor: Cursor | null = results.length > 0
-        ? { column: opts.orderBy.column, value: (results[0] as Record<string, unknown>)[opts.orderBy.column] }
+        ? { column: opts.orderBy.column, value: (results[0] as Record<string, unknown>)[opts.orderBy.column] } as Cursor
         : null;
 
       const result = { data: results, nextCursor, prevCursor };
@@ -1045,10 +1062,10 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * });
    * ```
    */
-  findOne<const S extends readonly SelectableKeys<T>[], const I extends readonly SubTableKeys<T>[]>(opts: FindOptions<T> & { select: S; include: I }): (SelectShape<T, S> & TS & { [K in I[number]]: SubTableItem<T, K>[] }) | null;
-  findOne<const S extends readonly SelectableKeys<T>[]>(opts: FindOptions<T> & { select: S }): (SelectShape<T, S> & TS) | null;
-  findOne(opts?: FindOptions<T>): Entity<Infer<T>, Mat, TS> | null;
-  findOne(opts: FindOptions<T> = {}): (Entity<Infer<T>, Mat, TS> | SelectShape<T, [ScalarKeys<T>]> & TS) | null {
+  findOne<const S extends readonly SelectableKeys<TQuery>[], const I extends readonly SubTableKeys<TQuery>[]>(opts: FindOptions<TQuery> & { select: S; include: I }): (SelectShape<TQuery, S> & TS & { [K in I[number]]: SubTableItem<TQuery, K>[] }) | null;
+  findOne<const S extends readonly SelectableKeys<TQuery>[]>(opts: FindOptions<TQuery> & { select: S }): (SelectShape<TQuery, S> & TS) | null;
+  findOne(opts?: FindOptions<TQuery>): Entity<Infer<TQuery>, Mat, TS> | null;
+  findOne(opts: FindOptions<TQuery> = {}): (Entity<Infer<TQuery>, Mat, TS> | SelectShape<TQuery, [ScalarKeys<TWrite>]> & TS) | null {
     return withTrace("repository.findOne", { table: this.tableName }, () => {
       const resolvedOpts = opts.select && opts.include ? this._ensureSelectPk(opts) : opts;
       const rows = this._fetchRows({ ...resolvedOpts, limit: 1 }, "findOne");
@@ -1072,11 +1089,11 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * }
    * ```
    */
-  iterate<const S extends readonly SelectableKeys<T>[], const I extends readonly SubTableKeys<T>[]>(opts: FindOptions<T> & { select: S; include: I }): Generator<SelectShape<T, S> & TS & { [K in I[number]]: SubTableItem<T, K>[] }>;
-  iterate<const I extends readonly SubTableKeys<T>[]>(opts: FindOptions<T> & { include: I }): Generator<Entity<Infer<T>, Mat, TS> & { [K in I[number]]: SubTableItem<T, K>[] }>;
-  iterate<const S extends readonly SelectableKeys<T>[]>(opts: FindOptions<T> & { select: S }): Generator<SelectShape<T, S> & TS>;
-  iterate(opts?: FindOptions<T>): Generator<Entity<Infer<T>, Mat, TS>>;
-  *iterate(opts: FindOptions<T> = {}): Generator<Entity<Infer<T>, Mat, TS> | SelectShape<T, [ScalarKeys<T>]> & TS> {
+  iterate<const S extends readonly SelectableKeys<TQuery>[], const I extends readonly SubTableKeys<TQuery>[]>(opts: FindOptions<TQuery> & { select: S; include: I }): Generator<SelectShape<TQuery, S> & TS & { [K in I[number]]: SubTableItem<TQuery, K>[] }>;
+  iterate<const I extends readonly SubTableKeys<TQuery>[]>(opts: FindOptions<TQuery> & { include: I }): Generator<Entity<Infer<TQuery>, Mat, TS> & { [K in I[number]]: SubTableItem<TQuery, K>[] }>;
+  iterate<const S extends readonly SelectableKeys<TQuery>[]>(opts: FindOptions<TQuery> & { select: S }): Generator<SelectShape<TQuery, S> & TS>;
+  iterate(opts?: FindOptions<TQuery>): Generator<Entity<Infer<TQuery>, Mat, TS>>;
+  *iterate(opts: FindOptions<TQuery> = {}): Generator<Entity<Infer<TQuery>, Mat, TS> | SelectShape<TQuery, [ScalarKeys<TWrite>]> & TS> {
     enterTrace("repository.iterate", { table: this.tableName });
     try {
       const resolvedOpts = opts.select && opts.include ? this._ensureSelectPk(opts) : opts.select ? this._ensureSelectPk(opts) : opts;
@@ -1114,7 +1131,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
     rows: Record<string, unknown>[],
     include: string[],
     select?: string[]
-  ): Generator<Entity<Infer<T>, Mat, TS>> {
+  ): Generator<Entity<Infer<TQuery>, Mat, TS>> {
     const pk = this.descriptor.primaryKey.name;
     const pkValues = rows.map((r) => r[pk]).filter((v): v is string | number => typeof v === "string" || typeof v === "number");
 
@@ -1167,7 +1184,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * }
    * ```
    */
-  findManyMaterialized(opts: FindOptions<T> = {}): Entity<Infer<T>, Mat, TS>[] {
+  findManyMaterialized(opts: FindOptions<TQuery> = {}): Entity<Infer<TQuery>, Mat, TS>[] {
     const rows = this.findMany(opts);
     if (!this._materializeMany) return rows;
     const materialized = this._materializeMany(
@@ -1181,7 +1198,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
         }
       }
     }
-    return materialized as Entity<Infer<T>, Mat, TS>[];
+    return materialized as Entity<Infer<TQuery>, Mat, TS>[];
   }
 
   // ─── Count ─────────────────────────────────────────────────────────────────
@@ -1197,7 +1214,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * const adults = orm.users.count({ age: { gte: 18 } });
    * ```
    */
-  count(where?: WhereClause<T>): number {
+  count(where?: WhereClause<TQuery>): number {
     return withTrace("repository.count", { table: this.tableName }, () => {
       const { sql, params } = buildWhere(where, this.descriptor.softDelete?.column, this.meta);
       const fullSql = `SELECT COUNT(*) as "_count" FROM "${this.tableName}" ${sql}`.trim();
@@ -1231,14 +1248,14 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * ```
    */
   aggregate<
-    const A extends Record<string, AggregationOp<T>>,
-    const G extends readonly (ScalarKeys<T> | import("./types.ts").ScalarJsonPath<T>)[] | undefined = undefined
+    const A extends Record<string, AggregationOp<TQuery>>,
+    const G extends readonly (ScalarKeys<TQuery> | import("./types.ts").ScalarJsonPath<TQuery>)[] | undefined = undefined
   >(
-    opts: AggregateOptions<T, A> & { groupBy?: G }
-  ): AggregateResult<T, A, G> {
+    opts: AggregateOptions<TQuery, A> & { groupBy?: G }
+  ): AggregateResult<TQuery, A, G> {
     return withTrace("repository.aggregate", { table: this.tableName }, () => {
       const { sql, params } = buildAggregateSql(this.tableName, opts, this.descriptor.softDelete?.column, this.meta);
-      const rows = this._executor.all<AggregateResult<T, A, G>[number]>(sql, params, "aggregate");
+      const rows = this._executor.all<AggregateResult<TQuery, A, G>[number]>(sql, params, "aggregate");
       this._emit("aggregate", { options: opts, result: rows });
       return rows;
     });
@@ -1264,12 +1281,12 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * });
    * ```
    */
-  windowQuery<const W extends Record<string, import("./types.ts").WindowFunction<T>>>(
-    opts: WindowQueryOptions<T> & { select: W }
-  ): WindowResult<T, W> {
+  windowQuery<const W extends Record<string, import("./types.ts").WindowFunction<TQuery>>>(
+    opts: WindowQueryOptions<TQuery> & { select: W }
+  ): WindowResult<TQuery, W> {
     return withTrace("repository.windowQuery", { table: this.tableName }, () => {
       const { sql, params } = buildWindowSql(this.tableName, opts, this.descriptor.softDelete?.column, this.meta);
-      const rows = this._executor.all<WindowResult<T, W>[number]>(sql, params, "windowQuery");
+      const rows = this._executor.all<WindowResult<TQuery, W>[number]>(sql, params, "windowQuery");
       this._emit("windowQuery", { options: opts, result: rows });
       return rows;
     });
@@ -1288,9 +1305,9 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * orm.users.update({ id: "u1", name: "alice smith" });
    * ```
    */
-  update(data: UpdateData<T, PK>): Entity<Infer<T>, Mat, TS> | null {
+  update(data: UpdateData<TWrite, PK>): Entity<Infer<TQuery>, Mat, TS> | null {
     return withTrace("repository.update", { table: this.tableName }, () => {
-      const obj = this._record(data as Infer<T>);
+      const obj = this._record(data as Infer<TWrite>);
       const pk = this.descriptor.primaryKey.name;
       const rawPk = obj[pk];
       if (rawPk === undefined || rawPk === null) {
@@ -1301,7 +1318,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
       }
 
       // Fetch existing, merge, validate - use raw find to avoid spurious read events
-      const existing = this._findByIdRaw(this._assertPk(rawPk) as Infer<T>[PK]);
+      const existing = this._findByIdRaw(this._assertPk(rawPk) as unknown as Infer<TQuery>[PK]);
       if (!existing) return null;
 
       const merged = this.parse({ ...existing, ...data });
@@ -1356,9 +1373,9 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * });
    * ```
    */
-  updateWhere(opts: UpdateWhereOptions<T, PK>): number {
+  updateWhere(opts: UpdateWhereOptions<TWrite, PK>): number {
     return withTrace("repository.updateWhere", { table: this.tableName }, () => {
-      const obj = this._record(opts.data as Infer<T>);
+      const obj = this._record(opts.data as Infer<TWrite>);
       const patch = flattenPatch(obj, this.meta, this._codecs);
       if (this._timestampNames.updatedAt && this._timestampNames.updatedAt in patch === false) {
         patch[this._timestampNames.updatedAt] = Date.now();
@@ -1390,7 +1407,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * const deleted = orm.users.deleteById("u1");
    * ```
    */
-  deleteById(id: Infer<T>[PK]): boolean {
+  deleteById(id: Infer<TWrite>[PK]): boolean {
     return withTrace("repository.deleteById", { table: this.tableName }, () => {
       const pk = this.descriptor.primaryKey.name;
 
@@ -1435,7 +1452,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * const removed = orm.users.deleteWhere({ status: { eq: "banned" } });
    * ```
    */
-  deleteWhere(where: WhereClause<T>): number {
+  deleteWhere(where: WhereClause<TQuery>): number {
     return withTrace("repository.deleteWhere", { table: this.tableName }, () => {
       const pk = this.descriptor.primaryKey.name;
 
@@ -1583,7 +1600,7 @@ const { sql: iSql, params: iParams } = buildInsert(sub.tableName, row);
    * );
    * ```
    */
-  raw<R = unknown>(sql: string, ...params: unknown[]): R[] {
+  raw<R = import("./types.ts").DBRow>(sql: string, ...params: import("./types.ts").DBValue[]): R[] {
     return this._executor.all<R>(sql, params as SQLQueryBindings[], "raw");
   }
 }

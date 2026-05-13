@@ -20,6 +20,7 @@ import {
   type TLiteral,
 } from "typebox";
 import type { ColumnCodec } from "./codec.ts";
+import type { GeneratedColumnConfig, DBValue } from "./types.ts";
 
 // ─── Column metadata ──────────────────────────────────────────────────────────
 
@@ -220,6 +221,22 @@ export function buildColumns(
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/** Convert GeneratedColumnConfig object to runtime format for introspectTable */
+export function convertGeneratedConfig(
+  config: GeneratedColumnConfig | undefined
+): Array<{ name: string; expr: string; sqlType?: SqliteType }> | undefined {
+  if (!config) return undefined;
+  const result: Array<{ name: string; expr: string; sqlType?: SqliteType }> = [];
+  for (const [name, def] of Object.entries(config)) {
+    result.push({
+      name,
+      expr: def.expr,
+      sqlType: schemaToSqlType(def.type),
+    });
+  }
+  return result;
+}
+
 /** @category Advanced */
 export function introspectTable(
   tableName: string,
@@ -340,17 +357,17 @@ export function buildIndexSQL(
  * Flatten a full user object into the main-table row object.
  * Arrays are stripped; nested objects are JSON-stringified.
  */
-function encodeValue(v: unknown, sqlType: SqliteType): unknown {
+function encodeValue(v: unknown, sqlType: SqliteType): DBValue {
   if (v === undefined || v === null) return null;
   if (sqlType === "TEXT" && typeof v === "object") return JSON.stringify(v);
   if (sqlType === "INTEGER" && typeof v === "boolean") return v ? 1 : 0;
-  return toSqliteScalar(v);
+  return toSqliteScalar(v) as DBValue;
 }
 
-function encodeValueWithCodec(v: unknown, sqlType: SqliteType, codec: ColumnCodec | undefined): unknown {
+function encodeValueWithCodec(v: unknown, sqlType: SqliteType, codec: ColumnCodec | undefined): DBValue {
   const encoded = encodeValue(v, sqlType);
   if (!codec) return encoded;
-  return codec.encode(encoded);
+  return codec.encode(encoded) as DBValue;
 }
 
 function getValueAtPath(obj: unknown, path: string[]): unknown {
@@ -567,7 +584,7 @@ export function hydrateRow(
       }
     } else {
       for (const col of meta.columns) {
-        let v = flat[col.name];
+        let v: DBValue = flat[col.name] as DBValue;
         const codec = codecs.get(col.name);
         if (codec) v = codec.decode(v);
         const decoded = decodeValue(v, col.sqlType, col.isBoolean);
@@ -599,7 +616,7 @@ export function hydrateRow(
 
     for (const col of meta.columns) {
       if (!selectedSet.has(col.name)) continue;
-      let v = flat[col.name];
+      let v: DBValue = flat[col.name] as DBValue;
       const codec = codecs?.get(col.name);
       if (codec) v = codec.decode(v);
       const decoded = decodeValue(v, col.sqlType, col.isBoolean);

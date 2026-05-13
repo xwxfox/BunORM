@@ -5,11 +5,11 @@
  */
 
 import type { TObject } from "typebox";
-import type { TableConfig, ScalarKeys } from "./types.ts";
+import type { TableConfig, ScalarKeys, AnyTableConfig } from "./types.ts";
 import type { TypedRelation } from "./typed-relation.ts";
-
+import type { TableDescriptor } from "./table.ts";
 export class RelationBuilder<
-  Tables extends Record<string, TableConfig<any, any, any>>
+  Tables extends Record<string, TableDescriptor<any, any, any, any>>
 > {
   private readonly relations: TypedRelation[] = [];
 
@@ -77,7 +77,7 @@ export class RelationBuilder<
 }
 
 /** @category Relations */
-export function createRelationBuilder<T extends Record<string, TableConfig<any, any, any>>>(
+export function createRelationBuilder<T extends Record<string, TableDescriptor<any, any, any, any>>>(
   tables: T
 ): RelationBuilder<T> {
   return new RelationBuilder(tables);

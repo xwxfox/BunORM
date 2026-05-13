@@ -4,7 +4,7 @@
  * and exposes the materializer for eager loading.
  */
 
-import type { TObject } from "typebox";
+import type { TObject, TSchema } from "typebox";
 import type {
   ScalarKeys,
   TableConfig,
@@ -13,11 +13,14 @@ import type {
   Entity,
   MetaAccessors,
   TimestampShape,
+  QuerySchema,
+  GeneratedColumnConfig
 } from "./types.ts";
 import type { TypedRelation } from "./typed-relation.ts";
 import { BunDatabase } from "./database.ts";
+import type { SQLQueryBindings } from "./database.ts";
 import { Repository } from "./repository.ts";
-import { introspectTable } from "./schema.ts";
+import { introspectTable, convertGeneratedConfig } from "./schema.ts";
 import { createRelationBuilder, type RelationBuilder } from "./relations.ts";
 import { MetaStore } from "./meta.ts";
 import { inspectAllTables } from "./inspector.ts";
@@ -30,6 +33,7 @@ import { LifecycleManager } from "./lifecycle.ts";
 import type { ORMContext, LifecycleHook } from "./lifecycle.ts";
 import { handleError, ORMError, raise, currentTrace } from "./errors.ts";
 import { unlinkDbFiles } from "./database.ts";
+import type { TableDescriptor } from "./table.ts";
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 
@@ -78,8 +82,9 @@ export interface CreateORMBaseOptions {
  * });
  * ```
  */
+
 export interface CreateORMOptions<
-  T extends Record<string, TableConfig<any, any, any>> = Record<string, TableConfig<any, any, any>>,
+  T extends Record<string, TableDescriptor<any, any, any, any>> = Record<string, TableDescriptor<any, any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > extends CreateORMBaseOptions {
   /** table schemas */
@@ -178,19 +183,21 @@ export interface CreateORMOptions<
  * ```
  */
 export type foxdb<
-  Tables extends Record<string, TableConfig<any, any, any>>,
+  Tables extends Record<string, TableDescriptor<any, any, any, any>>,
   Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 > = {
-  [K in keyof Tables]: Tables[K] extends TableConfig<
-    infer T,
-    infer PK,
-    infer TS
+  [K in keyof Tables]: Tables[K] extends TableDescriptor<
+    infer TWrite extends TSchema & { properties: Record<string, TSchema> },
+    infer PKName extends string,
+    infer Timestamps,
+    infer G extends GeneratedColumnConfig | undefined
   >
   ? Repository<
-    T,
-    PK extends ScalarKeys<T> ? PK : never,
-    Materialized<T, Tables, Rels, K & string>,
-    TimestampShape<TS>
+    TWrite,
+    QuerySchema<TWrite, G>,
+    PKName extends ScalarKeys<TWrite> ? PKName : never,
+    Materialized<TWrite, Tables, Rels, K & string>,
+    TimestampShape<Timestamps>
   >
   : never;
 } & {
@@ -224,7 +231,7 @@ export type foxdb<
 
 /** create a typed orm instance backed by sqlite */
 export function createORM<
-  const T extends Record<string, TableConfig<any, any, any>>,
+  const T extends Record<string, TableDescriptor<any, any, any, any>>,
   const Rels extends readonly TypedRelation[] = readonly TypedRelation[]
 >(opts: CreateORMOptions<T, Rels>): foxdb<T, Rels> {
   const dbPath = opts.path ?? ":memory:";
@@ -251,7 +258,11 @@ export function createORM<
     const repos = new Map<string, Repository<any, any, any, any>>();
 
     for (const [name, config] of tableEntries) {
-      const meta = introspectTable(name, config.schema, config.generated);
+      const meta = introspectTable(
+        name,
+        config.schema,
+        convertGeneratedConfig(config.generated)
+      );
       const colNames = new Set(meta.columns.map((c) => c.name));
 
       // Validate primaryKey
@@ -399,7 +410,11 @@ export function createORM<
 
     const desiredTables: DesiredTable[] = [];
     for (const [name, config] of tableEntries) {
-      const meta = introspectTable(name, config.schema);
+      const meta = introspectTable(
+        name,
+        config.schema,
+        convertGeneratedConfig(config.generated)
+      );
       desiredTables.push({
         name,
         columns: meta.columns,
@@ -478,7 +493,7 @@ export function createORM<
               if (!rel) return undefined;
               const targetRepo = repos.get(rel.targetTable);
               if (!targetRepo) return null;
-              const fkVal = record[rel.ownerField];
+              const fkVal = record[rel.ownerField] as unknown as string | number | bigint | null;
               if (fkVal == null) return null;
               const found = targetRepo.raw(
                 `SELECT * FROM "${rel.targetTable}" WHERE "${rel.targetField}" = ? LIMIT 1`,
@@ -518,9 +533,9 @@ export function createORM<
         const targetRepo = repos.get(rel.targetTable);
         if (!targetRepo) continue;
 
-        const fkValues = items
+        const fkValues: (string | number | bigint | null)[] = items
           .map((item: unknown) => (item as Record<string, unknown>)[fkField])
-          .filter((v) => v != null);
+          .filter((v): v is string | number | bigint | null => v != null);
 
         let byKey = new Map<unknown, Record<string, unknown>>();
         if (fkValues.length > 0) {
@@ -597,11 +612,11 @@ export function createORM<
         const targetRepo = repos.get(rel.targetTable);
         if (!targetRepo) continue;
         const col = rel.ownerField;
-        const fkValues = [
+        const fkValues: (string | number | bigint | null)[] = [
           ...new Set(
             results
-              .map((r) => r[col])
-              .filter((v) => v !== null && v !== undefined)
+              .map((r) => r[col] as string | number | bigint | null | undefined)
+              .filter((v): v is string | number | bigint | null => v !== null && v !== undefined)
           ),
         ];
         if (fkValues.length === 0) continue;
@@ -628,14 +643,14 @@ export function createORM<
         const targetRepo = repos.get(rel.targetTable);
         if (!targetRepo) continue;
         const [subField, fkField] = rel.ownerField.split(".") as [string, string];
-        const allFkValues = [
+        const allFkValues: (string | number | bigint | null)[] = [
           ...new Set(
             results.flatMap((r) => {
               const items = r[subField];
               if (!globalThis.Array.isArray(items)) return [];
               return items
-                .map((i) => (i as Record<string, unknown>)[fkField])
-                .filter((v) => v !== null && v !== undefined);
+                .map((i) => (i as Record<string, unknown>)[fkField] as string | number | bigint | null | undefined)
+                .filter((v): v is string | number | bigint | null => v !== null && v !== undefined);
             })
           ),
         ];

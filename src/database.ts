@@ -4,7 +4,7 @@
  * and the prepared-statement cache.
  */
 
-import { Database, constants, type SQLQueryBindings } from "bun:sqlite";
+import { Database, constants, type SQLQueryBindings, type Statement } from "bun:sqlite";
 import { TableScheduler } from "./scheduler.ts";
 
 // ─── Typed statement wrapper ──────────────────────────────────────────────────
@@ -16,13 +16,7 @@ export type { SQLQueryBindings };
  * prepared sqlite statement
  * @category Database
  */
-export interface BunStatement {
-  run(...params: SQLQueryBindings[]): { changes: number; lastInsertRowid: number | bigint };
-  all(...params: SQLQueryBindings[]): unknown[];
-  get(...params: SQLQueryBindings[]): unknown;
-  iterate(...params: SQLQueryBindings[]): IterableIterator<unknown>;
-  finalize(): void;
-}
+export type BunStatement = Statement;
 
 // ─── Pragma defaults ──────────────────────────────────────────────────────────
 
@@ -156,6 +150,7 @@ export class BunDatabase {
 }
 
 import { existsSync, unlinkSync } from "node:fs";
+import type { DBRow } from "./types.ts";
 
 export function resolveDbFilePaths(path: string): string[] {
   if (path === ":memory:") return [];

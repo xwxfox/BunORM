@@ -43,6 +43,8 @@ export type { BunStatement, DatabaseOptions } from "./database.ts";
 export { table } from "./table.ts";
 /** @category Schema */
 export type { TableDescriptor, SubTableConfig, TableConfigShape } from "./table.ts";
+/** @category Schema */
+export type { GeneratedColumnConfig } from "./types.ts";
 
 /** @category Schema */
 export type { ColumnRef, ColumnRefs, TScalarSchema } from "./columns.ts";

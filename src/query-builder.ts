@@ -265,8 +265,8 @@ function buildWhereRecursive<T extends TSchema & { properties: Record<string, TS
 
 export function buildWhere<T extends TSchema & { properties: Record<string, TSchema> }>(
   where: WhereClause<T> | undefined,
-  softDeleteColumn: string | undefined,
-  meta: TableMeta | undefined
+  softDeleteColumn?: string | undefined,
+  meta?: TableMeta | undefined
 ): WhereResult {
   return buildWhereRecursive(where, softDeleteColumn, meta);
 }

@@ -15,6 +15,39 @@ import type {
 import type { ColumnRef, TScalarSchema } from "./columns.ts";
 import type { TypedRelation } from "./typed-relation.ts";
 
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+// ─── TypeBox → SQLite type mapping (compile-time) ──────────────────────────────
+
+export type SqliteType = "TEXT" | "INTEGER" | "REAL" | "BLOB";
+
+type IsStringSchema<S> = S extends { type: "string" } ? true : false;
+type IsIntegerSchema<S> = S extends { type: "integer" } ? true : false;
+type IsNumberSchema<S> = S extends { type: "number" } ? true : false;
+type IsBooleanSchema<S> = S extends { type: "boolean" } ? true : false;
+type IsLiteralSchema<S> = S extends { const: string | number | boolean } ? true : false;
+
+type InferSqliteType<S> = 
+  IsIntegerSchema<S> extends true ? "INTEGER"
+  : IsNumberSchema<S> extends true ? "REAL"
+  : IsBooleanSchema<S> extends true ? "INTEGER"
+  : IsLiteralSchema<S> extends true ? S extends { const: infer V } 
+      ? V extends number ? (number extends V ? "REAL" : "INTEGER")
+      : V extends boolean ? "INTEGER" 
+      : "TEXT"
+      : "TEXT"
+  : "TEXT";
+
+type SchemaForKey<C, K extends string> = K extends keyof C ? C[K] : never;
+type ValueTypeForKey<C, K extends string> = SchemaForKey<C, K> extends TSchema ? Static<SchemaForKey<C, K>> : never;
+
+export type DBBinary = Uint8Array;
+
+export type DBScalar = string | number | boolean | bigint | null;
+
+export type DBValue = DBScalar | JsonValue | DBBinary;
+
+export type DBRow = Record<string, DBValue | undefined>;
 /** @internal */
 export type UnwrapOptional<T> = T extends TOptional<infer U> ? U : T;
 
@@ -517,16 +550,56 @@ export interface SoftDeleteConfig {
   column: string;
 }
 
-export interface GeneratedColumn {
-  name: string;
-  expr: string;
-  sqlType?: import("./schema.ts").SqliteType;
-}
+// ─── Generated Columns (object-based config) ────────────────────────────────────
+
+export type GeneratedColumnConfig = {
+  [name: string]: {
+    expr: string;
+    type: TSchema;
+  };
+};
+
+type GeneratedColumnEntries<C extends GeneratedColumnConfig> = {
+  [K in keyof C & string]: {
+    name: K;
+    expr: C[K]["expr"];
+    type: C[K]["type"];
+  };
+}[keyof C & string];
+
+export type GeneratedColumnsTuple<C extends GeneratedColumnConfig> = 
+  readonly GeneratedColumnEntries<C>[];
+
+type GeneratedColumnValues<C extends GeneratedColumnConfig> = {
+  [K in keyof C & string]: Static<C[K]["type"]>;
+};
+
+export type AugmentSchema<
+  T extends TSchema & { properties: Record<string, TSchema> },
+  G extends GeneratedColumnConfig
+> = TObject<T["properties"] & GeneratedColumnValues<G>>;
+
+export type QuerySchema<
+  T extends TSchema & { properties: Record<string, TSchema> },
+  G extends GeneratedColumnConfig | undefined
+> = [G] extends [undefined]
+  ? T
+  : [G] extends [GeneratedColumnConfig]
+    ? AugmentSchema<T, G>
+    : T;
+
+export type AnyTableConfig = TableConfig<
+  TSchema & { properties: Record<string, TSchema> },
+  string,
+  TimestampConfig,
+  GeneratedColumnConfig | undefined
+>;
 
 export interface TableConfig<
   T extends TSchema & { properties: Record<string, TSchema> } = TSchema & { properties: Record<string, TSchema> },
   PK extends string = string,
-  TS extends TimestampConfig = undefined
+  TS extends TimestampConfig = undefined,
+  G extends GeneratedColumnConfig | undefined = undefined
 > {
   schema: T;
   primaryKey: ColumnRef<PK>;
@@ -536,7 +609,7 @@ export interface TableConfig<
   eviction?: EvictionConfig;
   compression?: CompressionConfig;
   softDelete?: SoftDeleteConfig;
-  generated?: GeneratedColumn[];
+  generated?: G;
 }
 
 // ─── Meta accessors ──────────────────────────────────────────────────────────
@@ -573,7 +646,7 @@ export interface BuiltRelation {
  * @category Relations
  */
 export interface RelationEntry<
-  Tables extends Record<string, TableConfig<any, any, any>>,
+  Tables extends Record<string, TableConfig<any, any, any, any>>,
   Owner extends keyof Tables,
   Target extends keyof Tables
 > {
@@ -587,7 +660,7 @@ export interface RelationEntry<
  * @category Relations
  */
 export type RelationsConfig<
-  Tables extends Record<string, TableConfig<any, any, any>>
+  Tables extends Record<string, TableConfig<any, any, any, any>>
 > = {
     [K in keyof Tables & string]?: Array<
       {
@@ -623,7 +696,7 @@ export type ScalarMergeNames<
  * @category Relations
  */
 export type ScalarMergeType<
-  Tables extends Record<string, TableConfig<any, any, any>>,
+  Tables extends Record<string, TableConfig<any, any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string,
   Name extends string
@@ -641,7 +714,7 @@ export type ScalarMergeType<
  * @category Relations
  */
 export type ScalarMerge<
-  Tables extends Record<string, TableConfig<any, any, any>>,
+  Tables extends Record<string, TableConfig<any, any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string
 > = {
@@ -675,7 +748,7 @@ export type SubMergeNames<
  * @category Relations
  */
 export type SubMergeType<
-  Tables extends Record<string, TableConfig<any, any, any>>,
+  Tables extends Record<string, TableConfig<any, any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string,
   Sub extends string,
@@ -694,7 +767,7 @@ export type SubMergeType<
  * @category Relations
  */
 export type SubMerge<
-  Tables extends Record<string, TableConfig<any, any, any>>,
+  Tables extends Record<string, TableConfig<any, any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string,
   Sub extends string
@@ -726,7 +799,7 @@ export type SubMerge<
  */
 export type Materialized<
   T extends TSchema & { properties: Record<string, TSchema> },
-  Tables extends Record<string, TableConfig<any, any, any>>,
+  Tables extends Record<string, TableConfig<any, any, any, any>>,
   Rels extends readonly TypedRelation[],
   Owner extends string
 > = {
