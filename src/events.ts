@@ -4,8 +4,8 @@
  * unless at least one listener is registered for the event key.
  */
 
-import type { TableConfig, TableOperation, BroadOperation, TableEventOperation, TableEventPayload, Infer } from "./types.ts";
-
+import type { TableConfig, TableOperation, BroadOperation, TableEventOperation, TableEventPayload, Infer, AnyTableConfig } from "./types.ts";
+import type { TableDescriptor } from "./table.ts";
 /** @category Events */
 export type Listener = (payload: unknown) => void;
 
@@ -26,14 +26,14 @@ export interface LifecycleEventMap {
 }
 
 /** @internal */
-export type TableEventKey<Tables extends Record<string, TableConfig<any, any, any>>> =
+export type TableEventKey<Tables extends Record<string, AnyTableConfig>> =
   | { [K in keyof Tables & string]: `${K}.${TableOperation}` }[keyof Tables & string]
   | { [K in keyof Tables & string]: `${K}.${BroadOperation}` }[keyof Tables & string];
 
 /** @internal */
 export type ExtractEventPayload<
   K extends string,
-  Tables extends Record<string, TableConfig<any, any, any>>
+  Tables extends Record<string, AnyTableConfig>
 > = K extends `${infer T}.${infer Op}`
   ? T extends keyof Tables
   ? Op extends TableEventOperation
@@ -54,7 +54,7 @@ export type ExtractEventPayload<
  * @category Events
  */
 export interface ORMEvents<
-  Tables extends Record<string, TableConfig<any, any, any>>
+  Tables extends Record<string, TableDescriptor<any, any, any, any>>
 > {
   /** listen to lifecycle events (start, ready, shutdown, exit, fail) */
   on<K extends (keyof LifecycleEventMap) & string>(

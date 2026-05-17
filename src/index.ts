@@ -43,6 +43,8 @@ export type { BunStatement, DatabaseOptions } from "./database.ts";
 export { table } from "./table.ts";
 /** @category Schema */
 export type { TableDescriptor, SubTableConfig, TableConfigShape } from "./table.ts";
+/** @category Schema */
+export type { GeneratedColumnConfig } from "./types.ts";
 
 /** @category Schema */
 export type { ColumnRef, ColumnRefs, TScalarSchema } from "./columns.ts";
@@ -65,6 +67,8 @@ export type {
   ScalarKeys,
   SubTableKeys,
   ScalarFilter,
+  AggregateOptions,
+  AggregationOp,
 } from "./types.ts";
 
 // ─── Relations ────────────────────────────────────────────────────────────────
@@ -98,6 +102,18 @@ export { EventBus } from "./events.ts";
 export type { LifecycleEventMap, ORMEvents, Listener } from "./events.ts";
 /** @category Events */
 export type { TableOperation, BroadOperation, TableEventPayload, TableEventOperation } from "./types.ts";
+
+// ─── Observability ────────────────────────────────────────────────────────────
+
+/** @category Observability */
+export type { QueryMetrics, QueryMetricsHook } from "./types.ts";
+
+// ─── Batch Writer ─────────────────────────────────────────────────────────────
+
+/** @category Writing */
+export { BatchWriter } from "./batch-writer.ts";
+/** @category Writing */
+export type { BatchWriterOptions } from "./batch-writer.ts";
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 

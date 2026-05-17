@@ -4,7 +4,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { Object, String, Number, Integer, Array } from "typebox";
+import { Object, String, Number, Integer, Array, Optional } from "typebox";
 import { createORM, table } from "../src/index.ts";
 
 const ItemSchema = Object({
@@ -199,10 +199,19 @@ describe("foxdb", () => {
   });
 });
 
+const TimestampSaleSchema = Object({
+  id: String(),
+  status: String(),
+  total: Number(),
+  lineItems: Array(LineItemSchema),
+  createdAt: Optional(Number()),
+  updatedAt: Optional(Number()),
+});
+
 function makeTimestampORM() {
   return createORM({
     tables: {
-      sales: table(SaleSchema, (s) => ({
+      sales: table(TimestampSaleSchema, (s) => ({
         primaryKey: s.id,
         timestamps: true,
       })),

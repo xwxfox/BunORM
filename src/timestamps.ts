@@ -34,7 +34,7 @@ export function resolveTimestampNames(
   const columnNames = new Set(meta.columns.map((c) => c.name));
 
   return {
-    createdAt: columnNames.has(createdAtName) ? null : createdAtName,
-    updatedAt: columnNames.has(updatedAtName) ? null : updatedAtName,
+    createdAt: columnNames.has(createdAtName) ? createdAtName : null,
+    updatedAt: columnNames.has(updatedAtName) ? updatedAtName : null,
   };
 }

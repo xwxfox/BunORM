@@ -1,32 +1,35 @@
 /**
- * foxdb/src/table.ts
+ * bunorm/src/table.ts
  * User-facing helper that wraps a schema + configuration into a descriptor.
  * Guarantees compile-time safety for PK and index columns via ColumnRef.
  */
 
-import type { TObject } from "typebox";
+import type { TObject, TSchema } from "typebox";
 import type { ColumnRef, TScalarSchema, ColumnRefs } from "./columns.ts";
 import { createColumnProxy } from "./columns.ts";
-import type { IndexDefinition, TimestampConfig, TableConfig } from "./types.ts";
+import type { IndexDefinition, TimestampConfig, TableConfig, EvictionConfig, CompressionConfig, GeneratedColumnConfig } from "./types.ts";
 
 /** @category Schema */
 export interface SubTableConfig {
   indexes?: IndexDefinition[];
 }
 
-/** @category Schema */
 export interface TableDescriptor<
-  T extends TObject,
+  T extends TSchema & { properties: Record<string, TSchema> },
   PK extends string,
-  TS extends TimestampConfig = undefined
-> extends TableConfig<T, PK, TS> { }
+  TS extends TimestampConfig = undefined,
+  G extends GeneratedColumnConfig | undefined = undefined
+> extends TableConfig<T, PK, TS, G> { }
 
-/** @category Schema */
-export interface TableConfigShape<PK extends string, TS extends TimestampConfig> {
+export interface TableConfigShape<PK extends string, TS extends TimestampConfig, G extends GeneratedColumnConfig | undefined = undefined> {
   primaryKey: ColumnRef<PK>;
   indexes?: IndexDefinition[];
   subTables?: Partial<Record<string, SubTableConfig>>;
   timestamps?: TS;
+  eviction?: EvictionConfig;
+  compression?: CompressionConfig;
+  softDelete?: import("./types.ts").SoftDeleteConfig;
+  generated?: G;
 }
 
 /**
@@ -46,43 +49,16 @@ export interface TableConfigShape<PK extends string, TS extends TimestampConfig>
  * @category Schema
  */
 export function table<
-  T extends TObject,
+  T extends TSchema & { properties: Record<string, TSchema> },
   PK extends string,
-  const TS extends boolean
+  TS extends TimestampConfig = undefined,
+  G extends GeneratedColumnConfig | undefined = undefined
 >(
   schema: T,
-  configure: (columns: ColumnRefs<T>) => TableConfigShape<PK, TS> & { timestamps: TS }
-): TableDescriptor<T, PK, TS>;
-
-/** @category Schema */
-export function table<
-  T extends TObject,
-  PK extends string,
-  const TS extends { createdAt?: string; updatedAt?: string }
->(
-  schema: T,
-  configure: (columns: ColumnRefs<T>) => TableConfigShape<PK, TS> & { timestamps: TS }
-): TableDescriptor<T, PK, TS>;
-
-/** @category Schema */
-export function table<
-  T extends TObject,
-  PK extends string
->(
-  schema: T,
-  configure: (columns: ColumnRefs<T>) => TableConfigShape<PK, undefined>
-): TableDescriptor<T, PK, undefined>;
-
-/** @category Schema */
-export function table<
-  T extends TObject,
-  PK extends string,
-  TS extends TimestampConfig
->(
-  schema: T,
-  configure: (columns: ColumnRefs<T>) => TableConfigShape<PK, TS>
-): TableDescriptor<T, PK, TS> {
+  configure: (columns: ColumnRefs<T>) => TableConfigShape<PK, TS, G>
+): TableDescriptor<T, PK, TS, G> {
   const columns = createColumnProxy(schema);
-  const config = configure(columns);
-  return { schema, ...config };
+  const config = configure(columns) as TableConfigShape<PK, TS, G>;
+  const out = { schema, ...config } satisfies TableDescriptor<T, PK, TS, G>;
+  return out;
 }
